@@ -219,3 +219,24 @@ def load_dms() -> tuple[str, list[dict]]:
     except json.JSONDecodeError:
         cars = []
     return row["name"] or "", cars if isinstance(cars, list) else []
+
+
+def import_seed_csvs() -> int:
+    """Load the shipped BOXES folder into the database. Skips weeks already saved."""
+    folder = ROOT / "seed" / "csv"
+    if not folder.exists():
+        return 0
+    from parse_boxes import parse_boxes_file, week_date_from_name
+
+    existing = {row["name"] for row in list_weeks()}
+    added = 0
+    for path in sorted(folder.glob("*.csv")):
+        name = path.stem
+        if name in existing:
+            continue
+        cars = parse_boxes_file(path.read_bytes(), path.name)
+        if not cars:
+            continue
+        save_week(name, week_date_from_name(name), cars)
+        added += 1
+    return added

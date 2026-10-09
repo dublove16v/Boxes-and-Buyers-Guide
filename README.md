@@ -2,8 +2,8 @@
 
 Streamlit desk for printing FTC buyers guides from the weekly boxes sheet and a DealerTrack inventory report.
 
-- Upload the week's boxes file (`.xlsx`, `.xls`, or `.csv`). The newest uploaded week opens first.
-- Cars crossed off on the sheet stay on the list and are marked Dead. They are not printed.
+- The app opens with the BOXES folder already loaded, from 2021 through the current week. The newest week is selected first.
+- Upload a newer boxes file (`.xlsx`, `.xls`, or `.csv`) when the week changes. An Excel upload keeps cars that were crossed off; those stay on the list as dead deals and are not printed.
 - Check HERE and CHIP/BG for each car. Those checks are saved on the app.
 - 2017 and newer prints dealer warranty, limited. 2016 and older prints As-Is and a service contract.
 - Upload a DealerTrack report for cars that did not come from the auction.
@@ -15,4 +15,4 @@ Streamlit desk for printing FTC buyers guides from the weekly boxes sheet and a 
 2. Create an app from this GitHub repo.
 3. Main file: `app.py`. Branch: `main`.
 
-HERE, CHIP/BG, uploaded weeks, and the DealerTrack list are stored in the app database, not in this public repo.
+HERE, CHIP/BG, later uploads, and the DealerTrack list stay in the app database. The starting weeks in `seed/csv` are included so Streamlit opens with the folder already loaded. This repo is public, so those inventory VINs are visible on GitHub. Streamlit can also deploy a private repo if you want that hidden later.

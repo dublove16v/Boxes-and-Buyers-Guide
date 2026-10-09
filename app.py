@@ -99,6 +99,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+imported = db.import_seed_csvs()
+if imported:
+    st.toast(f"Loaded {imported} weeks from the boxes folder.")
+
 weeks = db.list_weeks()
 shop = db.load_shop()
 dms_name, dms_cars = db.load_dms()

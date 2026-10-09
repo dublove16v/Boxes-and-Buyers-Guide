@@ -6,7 +6,7 @@ from io import BytesIO, StringIO
 from openpyxl import load_workbook
 
 DAY_BANNER = re.compile(r"^(MON|TUE|TUES|WED|WEDS|THU|THUR|THURS|FRI|SAT|SUN)(DAY|S)?$", re.I)
-WEEK_NAME = re.compile(r"BOXES\s+(\d{1,2})-(\d{1,2})-(\d{2,4})", re.I)
+WEEK_NAME = re.compile(r"BOXES\s+(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})", re.I)
 SHEET_DATE = re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4})")
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
