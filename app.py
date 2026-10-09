@@ -4,7 +4,6 @@ import json
 from datetime import date
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 
 st.set_page_config(page_title="Boxes and Buyer's Guide Tool", layout="wide")
@@ -89,36 +88,31 @@ def warranty_label(year: int | None) -> str:
     return ""
 
 
-def struck(text: str, dead: bool) -> str:
-    if not dead or not text:
-        return text
-    return "".join(ch + "\u0336" for ch in text)
+def car_line(car: dict) -> str:
+    vin = str(car.get("vin") or "").upper()
+    title = " ".join(
+        part
+        for part in (str(car.get("year") or ""), car.get("make") or "", car.get("model") or "")
+        if str(part).strip()
+    )
+    bits = [title, vin[-6:] if vin else "", car.get("color") or ""]
+    return " · ".join(bit for bit in bits if bit)
 
 
-def sheet_frame(cars: list[dict], flags: dict[str, dict]) -> pd.DataFrame:
-    rows = []
-    for car in cars:
-        flag = flags.get(car["vin"], {})
-        rows.append(
-            {
-                "HERE": bool(flag.get("here")),
-                "CHIP": bool(flag.get("chip")),
-                "BG": bool(flag.get("bg")),
-                "Print": False,
-                "Day": car["day_label"],
-                "Year": car["year"] or "",
-                "Vehicle": struck(f"{car['year'] or ''} {car['make']} {car['model']}".strip(), car["dead"]),
-                "VIN": car["vin"],
-                "Color": car["color"],
-                "Miles": car["odometer"],
-                "Lane": car["lane"],
-                "Lot": car["lot"],
-                "Auction": car["auction"],
-                "Guide": warranty_label(car["year"]),
-                "Status": "Dead" if car["dead"] else "",
-            }
-        )
-    return pd.DataFrame(rows)
+def matches_search(car: dict, query: str) -> bool:
+    if not query.strip():
+        return True
+    blob = " ".join(
+        str(car.get(key) or "")
+        for key in ("year", "make", "model", "vin", "color", "day_label", "auction")
+    ).lower()
+    return query.strip().lower() in blob
+
+
+def flag_box(label: str, key: str, default: bool) -> bool:
+    if key not in st.session_state:
+        st.session_state[key] = bool(default)
+    return st.checkbox(label, key=key)
 
 
 def merge_stock(week_cars: list[dict], stock: list[dict]) -> list[dict]:
@@ -184,6 +178,13 @@ picked = st.selectbox(
 )
 st.session_state["week_id"] = picked
 
+search = st.text_input(
+    "Search",
+    placeholder="Year, make, model, VIN, or color",
+    label_visibility="collapsed",
+    key="car-search",
+)
+
 printed = st.query_params.get("printed", "")
 printed_week = st.query_params.get("week", "")
 if printed and printed_week == picked:
@@ -222,8 +223,10 @@ for car in cars:
         continue
     if show == "Here, no BG" and not (flag.get("here") and not flag.get("bg")):
         continue
+    if not matches_search(car, search):
+        continue
     shown.append(car)
-frame = sheet_frame(shown, flags)
+dead_shown = [car for car in dead if matches_search(car, search)] if show == "All" else []
 live = [car for car in cars if not car["dead"]]
 st.caption(
     f"{len(live)} coming in · {len(dead)} dead · "
@@ -232,59 +235,61 @@ st.caption(
     f"{sum(1 for car in live if flags.get(car['vin'], {}).get('bg'))} bg"
 )
 
-if dead and show == "All":
-    dead_body = []
-    for car in dead:
-        bits = [
-            car["day_label"],
-            f"{car['year'] or ''} {car['make']} {car['model']}".strip(),
-            car["vin"],
-            car["color"],
-            car["odometer"],
-            car["auction"],
-            "Dead deal",
-        ]
-        cells = "".join(
-            f'<td style="padding:0.35rem 0.6rem;color:#8c3a32;text-decoration:line-through;">{html.escape(str(bit or ""))}</td>'
-            for bit in bits
-        )
-        dead_body.append(f"<tr>{cells}</tr>")
-    st.html(
-        '<p style="margin:0.4rem 0;color:#8c3a32;font-weight:700;">Dead deals</p>'
-        '<p style="margin:0 0 0.4rem;color:#8c3a32;">Crossed off on the boxes sheet. These cannot be checked and are not in the filters.</p>'
-        '<table style="width:100%;border-collapse:collapse;background:#f8ecea;">'
-        + "".join(dead_body)
-        + "</table>"
-    )
-
-edited = st.data_editor(
-    frame,
-    hide_index=True,
-    width="stretch",
-    column_config={
-        "HERE": st.column_config.CheckboxColumn(required=True),
-        "CHIP": st.column_config.CheckboxColumn(required=True),
-        "BG": st.column_config.CheckboxColumn(required=True),
-        "Print": st.column_config.CheckboxColumn(required=True),
-        "Day": st.column_config.TextColumn(disabled=True),
-        "Year": st.column_config.TextColumn(disabled=True),
-        "Vehicle": st.column_config.TextColumn(disabled=True),
-        "VIN": st.column_config.TextColumn(disabled=True),
-        "Color": st.column_config.TextColumn(disabled=True),
-        "Miles": st.column_config.TextColumn(disabled=True),
-        "Lane": st.column_config.TextColumn(disabled=True),
-        "Lot": st.column_config.TextColumn(disabled=True),
-        "Auction": st.column_config.TextColumn(disabled=True),
-        "Guide": st.column_config.TextColumn(disabled=True),
-        "Status": st.column_config.TextColumn(disabled=True),
-    },
-    key=f"grid-{picked}-{show}-{len(shown)}-{st.session_state.get('print_nonce', 0)}",
+st.markdown(
+    """
+    <style>
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+      padding: 0.35rem 0.7rem 0.25rem;
+      margin-bottom: 0.35rem;
+    }
+    div[data-testid="stCheckbox"] { min-height: 1.6rem; }
+    div[data-testid="stCheckbox"] label p { font-size: 0.92rem; }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
-flag_rows = [
-    {"vin": row["VIN"], "here": bool(row["HERE"]), "chip": bool(row["CHIP"]), "bg": bool(row["BG"])}
-    for _, row in edited.iterrows()
-]
+nonce = st.session_state.get("print_nonce", 0)
+for vin in st.session_state.pop("clear_print", []):
+    st.session_state.pop(f"print-{picked}-{vin}", None)
+flag_rows = []
+to_print = []
+
+def car_card(car: dict, dead_deal: bool) -> None:
+    line = car_line(car)
+    with st.container(border=True):
+        if dead_deal:
+            st.markdown(
+                f'<p style="margin:0;color:#8c3a32;font-weight:700;text-decoration:line-through;">{html.escape(line)}</p>'
+                '<p style="margin:0.1rem 0 0;color:#8c3a32;font-size:0.8rem;">Dead deal</p>',
+                unsafe_allow_html=True,
+            )
+            return
+        flag = flags.get(car["vin"], {})
+        here_col, chip_col, bg_col, print_col = st.columns(4)
+        with here_col:
+            here = flag_box("Here", f"here-{picked}-{car['vin']}-{nonce}", bool(flag.get("here")))
+        with chip_col:
+            chip = flag_box("Chip", f"chip-{picked}-{car['vin']}-{nonce}", bool(flag.get("chip")))
+        with bg_col:
+            bg = flag_box("BG", f"bg-{picked}-{car['vin']}-{nonce}", bool(flag.get("bg")))
+        with print_col:
+            selected = flag_box("Print", f"print-{picked}-{car['vin']}", False)
+        st.markdown(
+            f'<p style="margin:0.05rem 0 0.15rem;font-weight:700;line-height:1.25;">{html.escape(line)}</p>',
+            unsafe_allow_html=True,
+        )
+        flag_rows.append({"vin": car["vin"], "here": here, "chip": chip, "bg": bg})
+        if selected:
+            to_print.append(car)
+
+if not shown and not dead_shown:
+    st.caption("Nothing matches that search." if search.strip() else "No cars on this list.")
+for car in shown:
+    car_card(car, False)
+for car in dead_shown:
+    car_card(car, True)
+
 expected = [
     {
         "vin": car["vin"],
@@ -298,12 +303,7 @@ if flag_rows != expected:
     db.save_flags(picked, flag_rows)
     flags = db.flags_for(picked)
 
-chosen = edited[edited["Print"] == True]  # noqa: E712
-by_vin = {car["vin"]: car for car in cars}
-to_print = [by_vin[vin] for vin in chosen["VIN"].tolist() if vin in by_vin and not by_vin[vin]["dead"]]
-if chosen.shape[0] and not to_print:
-    st.warning("Dead deals stay on the list, but they are not printed.")
-elif to_print:
+if to_print:
     label = f"Print {len(to_print)} buyers guide{'s' if len(to_print) != 1 else ''}"
     if st.button(label, type="primary"):
         printed_vins = {car["vin"] for car in to_print}
@@ -311,14 +311,15 @@ elif to_print:
             picked,
             [
                 {
-                    "vin": row["VIN"],
-                    "here": bool(row["HERE"]),
-                    "chip": bool(row["CHIP"]),
-                    "bg": True if row["VIN"] in printed_vins else bool(row["BG"]),
+                    "vin": row["vin"],
+                    "here": row["here"],
+                    "chip": row["chip"],
+                    "bg": True if row["vin"] in printed_vins else row["bg"],
                 }
-                for _, row in edited.iterrows()
+                for row in flag_rows
             ],
         )
+        st.session_state["clear_print"] = list(printed_vins)
         st.session_state["print_job"] = guides_document(to_print, AS_OF)
         st.session_state["print_nonce"] = st.session_state.get("print_nonce", 0) + 1
         st.rerun()
