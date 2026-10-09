@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="Boxes and Buyer's Guide Tool", layout="wide")
+st.set_page_config(page_title="Boxes and Buyer's Guide Tool", page_icon="static/logo.png", layout="wide")
 
 try:
     import db
