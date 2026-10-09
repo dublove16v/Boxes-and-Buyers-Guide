@@ -150,6 +150,7 @@ st.markdown(
 
 imported = db.import_seed_csvs()
 db.apply_dead_catalog()
+db.apply_highlight_flags()
 if imported:
     st.toast(f"Loaded {imported} weeks from the boxes folder.")
 

@@ -285,6 +285,53 @@ def apply_dead_catalog() -> int:
     return changed
 
 
+def apply_highlight_flags() -> int:
+    """Check Here, Chip, and BG for highlighted cars on weeks before 10-7-26."""
+    path = ROOT / "seed" / "highlights.json"
+    if not path.exists():
+        return 0
+    catalog = json.loads(path.read_text())
+    conn = connect()
+    conn.execute("create table if not exists meta (key text primary key, value text)")
+    if conn.execute("select 1 from meta where key = 'highlights-before-2026-10-07'").fetchone():
+        return 0
+    weeks = {
+        row["name"]: row["id"]
+        for row in conn.execute("select id, name, week_date from weeks")
+        if (row["week_date"] or "") < "2026-10-07"
+    }
+    changed = 0
+    with conn:
+        for name, vins in catalog.items():
+            week_id = weeks.get(name)
+            if not week_id:
+                continue
+            present = {
+                row["vin"].upper()
+                for row in conn.execute("select vin from vehicles where week_id = ?", (week_id,))
+            }
+            for vin in vins:
+                vin = str(vin).upper()
+                if vin not in present:
+                    continue
+                conn.execute(
+                    """
+                    insert into flags (week_id, vin, here, chip, bg)
+                    values (?, ?, 1, 1, 1)
+                    on conflict(week_id, vin) do update set
+                      here = 1,
+                      chip = 1,
+                      bg = 1
+                    """,
+                    (week_id, vin),
+                )
+                changed += 1
+        conn.execute(
+            "insert into meta (key, value) values ('highlights-before-2026-10-07', '1')"
+        )
+    return changed
+
+
 def import_seed_csvs() -> int:
     """Load the shipped BOXES folder into the database. Skips weeks already saved."""
     folder = ROOT / "seed" / "csv"
