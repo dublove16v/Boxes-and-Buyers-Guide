@@ -35,7 +35,7 @@ def intake_label(car: dict) -> str:
         return "Trade"
     if re.search(r"purchas|auction|buy", source, re.I):
         return "Purchase"
-    return "Purchase" if car.get("auction") else ""
+    return ""
 
 
 def _export_stock(car: dict, vin: str) -> str:
@@ -47,48 +47,25 @@ def _export_stock(car: dict, vin: str) -> str:
     return token
 
 
-def key_advantage_cars(week_cars: list[dict], dms_cars: list[dict]) -> list[dict]:
-    """Purchases and trades for the Key Advantage file.
+def key_advantage_cars(dms_cars: list[dict]) -> list[dict]:
+    """Every vehicle on the DealerTrack report, once.
 
     A stock number ending in P or PL is a purchase. T or TL is a trade.
-    Boxes cars are purchases unless DealerTrack already gave that VIN a stock
-    suffix. Dead deals are left out. The same VIN is written once.
+    Cars without that ending are still included.
     """
-    dms_by_vin = {}
-    for car in dms_cars:
-        vin = _clean(car.get("vin")).upper()
-        if vin:
-            dms_by_vin[vin] = car
-    dead = {_clean(car.get("vin")).upper() for car in week_cars if car.get("dead")}
     chosen = []
-    seen = set(dead)
-    for car in week_cars:
-        if car.get("dead"):
-            continue
-        vin = _clean(car.get("vin")).upper()
-        if not vin or vin in seen:
-            continue
-        seen.add(vin)
-        row = dict(car)
-        row["vin"] = vin
-        match = dms_by_vin.get(vin)
-        if match and dealer_stock(match):
-            row["stock"] = dealer_stock(match)
-        row["intake"] = stock_kind(dealer_stock(row)) or "Purchase"
-        chosen.append(row)
+    seen = set()
     for car in dms_cars:
         vin = _clean(car.get("vin")).upper()
         if not vin or vin in seen:
-            continue
-        kind = stock_kind(dealer_stock(car))
-        if not kind and "trade" in _clean(car.get("source")).lower():
-            kind = "Trade"
-        if not kind:
             continue
         seen.add(vin)
         row = dict(car)
         row["vin"] = vin
         row["stock"] = dealer_stock(car)
+        kind = stock_kind(row["stock"])
+        if not kind and "trade" in _clean(car.get("source")).lower():
+            kind = "Trade"
         row["intake"] = kind
         if not row.get("auction"):
             row["auction"] = "DealerTrack"
