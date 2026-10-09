@@ -99,6 +99,9 @@ def car_line(car: dict) -> str:
         if str(part).strip()
     )
     bits = [title, vin[-6:] if vin else "", car.get("color") or ""]
+    stock = str(car.get("stock") or "").strip()
+    if stock:
+        bits.append(stock)
     return " · ".join(bit for bit in bits if bit)
 
 
@@ -107,7 +110,7 @@ def matches_search(car: dict, query: str) -> bool:
         return True
     blob = " ".join(
         str(car.get(key) or "")
-        for key in ("year", "make", "model", "vin", "color", "day_label", "auction")
+        for key in ("year", "make", "model", "vin", "color", "day_label", "auction", "stock")
     ).lower()
     return query.strip().lower() in blob
 
@@ -164,6 +167,11 @@ if imported:
 
 weeks = db.list_weeks()
 dms_name, dms_cars = db.load_dms()
+added_intake = db.sync_intake(dms_cars)
+if added_intake:
+    st.toast(f"Added {added_intake} to Trades & Purchases.")
+    weeks = db.list_weeks()
+boxes_weeks = [week for week in weeks if week["id"] != db.INTAKE_ID]
 
 with st.sidebar:
     st.header("This week")
@@ -195,12 +203,12 @@ with st.sidebar:
         purchase_on_report = sum(1 for car in dms_cars if stock_kind(str(car.get("stock") or "")) == "Purchase")
         trade_on_report = sum(1 for car in dms_cars if stock_kind(str(car.get("stock") or "")) == "Trade")
         st.caption(f"{dms_name} · {purchase_on_report} purchases (P/PL) · {trade_on_report} trades (T/TL)")
-    latest_boxes = db.week_vehicles(weeks[0]["id"]) if weeks else []
+    latest_boxes = db.week_vehicles(boxes_weeks[0]["id"]) if boxes_weeks else []
     export_cars = key_advantage_cars(dms_cars, latest_boxes)
     export_body, export_count = key_advantage_txt(export_cars)
     purchase_count = sum(1 for car in export_cars if car.get("intake") == "Purchase" and key_advantage_txt([car])[1])
     trade_count = sum(1 for car in export_cars if car.get("intake") == "Trade" and key_advantage_txt([car])[1])
-    export_label = weeks[0]["name"] if weeks else (Path(dms_name).stem if dms_name else "KeyAdvantage")
+    export_label = boxes_weeks[0]["name"] if boxes_weeks else (Path(dms_name).stem if dms_name else "KeyAdvantage")
     export_name = re.sub(r"[^A-Za-z0-9._-]+", "_", export_label).strip("_") or "KeyAdvantage"
     st.download_button(
         f"Export Key Advantage ({export_count})",
@@ -218,10 +226,13 @@ if not weeks:
     st.info("Upload this week's boxes sheet to start the list. Cars crossed off on the sheet stay on the list as dead deals.")
     st.stop()
 
-labels = {week["id"]: week["name"] for week in weeks}
-default_id = st.session_state.get("week_id") or weeks[0]["id"]
+boxes_weeks = [week for week in weeks if week["id"] != db.INTAKE_ID]
+intake_week = next((week for week in weeks if week["id"] == db.INTAKE_ID), None)
+ordered_weeks = ([intake_week] if intake_week else []) + boxes_weeks
+labels = {week["id"]: week["name"] for week in ordered_weeks}
+default_id = st.session_state.get("week_id") or (boxes_weeks[0]["id"] if boxes_weeks else ordered_weeks[0]["id"])
 if default_id not in labels:
-    default_id = weeks[0]["id"]
+    default_id = boxes_weeks[0]["id"] if boxes_weeks else ordered_weeks[0]["id"]
 picked = st.selectbox(
     "Buying week",
     options=list(labels),
@@ -229,6 +240,8 @@ picked = st.selectbox(
     format_func=lambda week_id: labels[week_id],
 )
 st.session_state["week_id"] = picked
+if picked == db.INTAKE_ID:
+    st.caption("Running list of trades (T/TL) and purchased cars (P/PL). Uploading a DealerTrack report adds new ones. They stay off the boxes weeks.")
 
 search = st.text_input(
     "Search",
@@ -261,7 +274,7 @@ if printed and printed_week == picked:
     st.rerun()
 
 week_cars = db.week_vehicles(picked)
-cars = merge_stock(week_cars, dms_cars)
+cars = week_cars
 flags = db.flags_for(picked)
 show = st.radio(
     "Show",

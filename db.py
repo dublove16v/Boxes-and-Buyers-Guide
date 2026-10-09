@@ -55,6 +55,7 @@ def connect() -> sqlite3.Connection:
           day_label text not null default '',
           sort_key text not null default '',
           dead integer not null default 0,
+          stock text not null default '',
           primary key (week_id, position)
         );
         create table if not exists flags (
@@ -83,6 +84,9 @@ def connect() -> sqlite3.Connection:
     if "bg" not in columns:
         conn.execute("alter table flags add column bg integer not null default 0")
         conn.execute("update flags set bg = 1 where chip = 1")
+    vehicle_columns = {row[1] for row in conn.execute("pragma table_info(vehicles)")}
+    if "stock" not in vehicle_columns:
+        conn.execute("alter table vehicles add column stock text not null default ''")
     return conn
 
 
@@ -90,8 +94,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def save_week(name: str, week_date: str, vehicles: list[dict]) -> str:
-    week_id = f"{week_date or 'undated'}:{name}".strip()[:180]
+def save_week(name: str, week_date: str, vehicles: list[dict], week_id: str | None = None) -> str:
+    week_id = (week_id or f"{week_date or 'undated'}:{name}").strip()[:180]
     conn = connect()
     with conn:
         conn.execute(
@@ -110,8 +114,8 @@ def save_week(name: str, week_date: str, vehicles: list[dict]) -> str:
             """
             insert into vehicles (
               week_id, position, vin, year, make, model, trim, color, odometer,
-              lane, lot, auction, day_label, sort_key, dead
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              lane, lot, auction, day_label, sort_key, dead, stock
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -128,8 +132,9 @@ def save_week(name: str, week_date: str, vehicles: list[dict]) -> str:
                     car["lot"],
                     car["auction"],
                     car["day_label"],
-                    car["sort_key"],
-                    1 if car["dead"] else 0,
+                    car.get("sort_key") or "",
+                    1 if car.get("dead") else 0,
+                    car.get("stock") or "",
                 )
                 for index, car in enumerate(vehicles)
             ],
@@ -150,7 +155,7 @@ def week_vehicles(week_id: str) -> list[dict]:
     rows = conn.execute(
         """
         select vin, year, make, model, trim, color, odometer, lane, lot, auction,
-               day_label, sort_key, dead
+               day_label, sort_key, dead, stock
         from vehicles
         where week_id = ?
         order by sort_key, position
@@ -248,6 +253,71 @@ def load_dms() -> tuple[str, list[dict]]:
     except json.JSONDecodeError:
         cars = []
     return row["name"] or "", cars if isinstance(cars, list) else []
+
+
+INTAKE_ID = "intake:trades-purchases"
+INTAKE_NAME = "TRADES & PURCHASES"
+
+
+def sync_intake(dms_cars: list[dict]) -> int:
+    """Add DealerTrack trades (T/TL) and purchases (P/PL) to a running sheet.
+
+    Cars already on the sheet stay there. A later report does not remove them
+    and does not put them on a boxes week.
+    """
+    from key_advantage import dealer_stock, stock_kind
+
+    incoming = []
+    for car in dms_cars:
+        stock = dealer_stock(car)
+        kind = stock_kind(stock)
+        if kind not in ("Trade", "Purchase") or not car.get("vin"):
+            continue
+        incoming.append((car, stock, kind))
+    if not incoming:
+        return 0
+    existing = week_vehicles(INTAKE_ID)
+    by_vin = {str(car["vin"]).upper(): dict(car) for car in existing}
+    added = 0
+    for car, stock, kind in incoming:
+        vin = str(car["vin"]).upper()
+        if vin in by_vin:
+            row = by_vin[vin]
+            row["stock"] = stock
+            row["day_label"] = f"{kind} · {stock}"
+            for field in ("year", "make", "model", "trim", "color", "odometer"):
+                if car.get(field):
+                    row[field] = car[field]
+            continue
+        by_vin[vin] = {
+            "vin": vin,
+            "year": car.get("year"),
+            "make": car.get("make") or "",
+            "model": car.get("model") or "",
+            "trim": car.get("trim") or "",
+            "color": car.get("color") or "",
+            "odometer": car.get("odometer") or "",
+            "lane": "",
+            "lot": "",
+            "auction": "",
+            "day_label": f"{kind} · {stock}",
+            "sort_key": "0000-00-02" if kind == "Trade" else "0000-00-03",
+            "dead": False,
+            "stock": stock,
+        }
+        added += 1
+    ordered = []
+    seen = set()
+    for vin, car in by_vin.items():
+        if vin not in {str(row["vin"]).upper() for row in existing}:
+            ordered.append(car)
+            seen.add(vin)
+    for car in existing:
+        vin = str(car["vin"]).upper()
+        if vin not in seen:
+            ordered.append(by_vin[vin])
+    save_week(INTAKE_NAME, "9999-12-31", ordered, week_id=INTAKE_ID)
+    return added
 
 
 def apply_dead_catalog() -> int:
