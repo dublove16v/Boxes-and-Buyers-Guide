@@ -310,14 +310,10 @@ if mobile:
                 )
                 return
             flag = flags.get(car["vin"], {})
-            here_col, chip_col, bg_col, print_col = st.columns(4, gap="xxsmall", wrap=False)
-            with here_col:
+            with st.container(horizontal=True, gap="xsmall", wrap=False, horizontal_alignment="left"):
                 here = flag_box("Here", f"here-{picked}-{car['vin']}-{nonce}", bool(flag.get("here")))
-            with chip_col:
                 chip = flag_box("Chip", f"chip-{picked}-{car['vin']}-{nonce}", bool(flag.get("chip")))
-            with bg_col:
                 bg = flag_box("BG", f"bg-{picked}-{car['vin']}-{nonce}", bool(flag.get("bg")))
-            with print_col:
                 selected = flag_box("Print", f"print-{picked}-{car['vin']}", False)
             st.markdown(
                 f'<p style="margin:0.05rem 0 0.15rem;font-weight:700;line-height:1.2;">{html.escape(line)}</p>',
