@@ -17,7 +17,7 @@ SPOTS = [
     {"key": "mfrStill", "left": 9.35, "top": 64.44, "width": 1.62, "height": 1.25, "large": False},
     {"key": "mfrUsed", "left": 9.35, "top": 67.56, "width": 1.62, "height": 1.25, "large": False},
     {"key": "otherUsed", "left": 9.35, "top": 69.7, "width": 1.62, "height": 1.25, "large": False},
-    {"key": "serviceContract", "left": 9.973, "top": 75.229, "width": 1.62, "height": 1.25, "large": False},
+    {"key": "serviceContract", "left": 9.626, "top": 75.22, "width": 1.62, "height": 1.25, "large": False},
 ]
 
 
