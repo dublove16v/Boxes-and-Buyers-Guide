@@ -30,27 +30,37 @@ AS_OF = date.today().year
 
 def print_launcher(document: str, vins: str, week_id: str, label: str) -> str:
     payload = json.dumps(document).replace("</", "<\\/")
-    safe_label = label.replace("&", "&").replace("<", "<").replace(">", ">")
-    return (
-        '<button id="print-guides" type="button" style="height:2.4rem;padding:0 1rem;border:0;border-radius:0.5rem;background:#1f4d3a;color:#f4f1ea;font-weight:700;cursor:pointer;">'
-        + safe_label
-        + "</button><script>const doc = "
-        + payload
-        + ";document.getElementById('print-guides').addEventListener('click', () => {"
-        + "const w = window.open('', '_blank');"
-        + "if (!w) { alert('Allow pop-ups for this site, then click Print again.'); return; }"
-        + "w.document.open(); w.document.write(doc); w.document.close();"
-        + "const url = new URL(window.location.href);"
-        + "url.searchParams.set('printed', "
-        + json.dumps(vins)
-        + ");"
-        + "url.searchParams.set('week', "
-        + json.dumps(week_id)
-        + ");"
-        + "setTimeout(() => w.print(), 400);"
-        + "setTimeout(() => { window.location.href = url.toString(); }, 900);"
-        + "});</script>"
+    safe_label = (
+        label.replace("&", "\u0026amp;")
+        .replace("<", "\u0026lt;")
+        .replace(">", "\u0026gt;")
     )
+    return f"""<!doctype html>
+<html>
+<body style="margin:0;background:transparent;font-family:sans-serif;">
+<button id="print-guides" type="button" style="height:2.4rem;padding:0 1rem;border:0;border-radius:0.5rem;background:#1f4d3a;color:#f4f1ea;font-weight:700;cursor:pointer;">{safe_label}</button>
+<script>
+const doc = {payload};
+document.getElementById("print-guides").onclick = function () {{
+  const w = window.open("", "_blank");
+  if (!w) {{
+    alert("Allow pop-ups for this site, then click Print again.");
+    return;
+  }}
+  w.document.open();
+  w.document.write(doc);
+  w.document.close();
+  setTimeout(function () {{ w.focus(); w.print(); }}, 400);
+  try {{
+    const url = new URL(window.parent.location.href);
+    url.searchParams.set("printed", {json.dumps(vins)});
+    url.searchParams.set("week", {json.dumps(week_id)});
+    setTimeout(function () {{ window.parent.location.href = url.toString(); }}, 900);
+  }} catch (err) {{}}
+}};
+</script>
+</body>
+</html>"""
 
 
 def _font_css() -> str:
@@ -142,7 +152,6 @@ if imported:
     st.toast(f"Loaded {imported} weeks from the boxes folder.")
 
 weeks = db.list_weeks()
-shop = db.load_shop()
 dms_name, dms_cars = db.load_dms()
 
 with st.sidebar:
@@ -169,19 +178,6 @@ with st.sidebar:
             st.rerun()
     if dms_name:
         st.caption(f"{dms_name} · {len(dms_cars)} in stock")
-    st.header("Warranty blanks")
-    labor = st.text_input("Labor %", shop["labor"])
-    parts = st.text_input("Parts %", shop["parts"])
-    systems = st.text_area("Systems covered", shop["systems"])
-    duration = st.text_area("Duration", shop["duration"])
-    if (labor, parts, systems, duration) != (
-        shop["labor"],
-        shop["parts"],
-        shop["systems"],
-        shop["duration"],
-    ):
-        db.save_shop(labor, parts, systems, duration)
-        shop = {"labor": labor, "parts": parts, "systems": systems, "duration": duration}
 
 if not weeks:
     st.info("Upload this week's boxes sheet to start the list. Cars crossed off on the sheet stay on the list as dead deals.")
@@ -294,15 +290,10 @@ to_print = [by_vin[vin] for vin in chosen["VIN"].tolist() if vin in by_vin and n
 if chosen.shape[0] and not to_print:
     st.warning("Dead deals stay on the list, but they are not printed.")
 elif to_print:
-    nudge_x = st.number_input("Shift right (inches)", min_value=-1.0, max_value=1.0, value=0.0, step=0.05, key="nudge_x")
-    nudge_y = st.number_input("Shift down (inches)", min_value=-1.0, max_value=1.0, value=0.0, step=0.05, key="nudge_y")
-    html = guides_document(to_print, AS_OF, nudge_x, nudge_y)
+    html = guides_document(to_print, AS_OF)
     label = f"Print {len(to_print)} buyers guide{'s' if len(to_print) != 1 else ''}"
-    st.html(
-        print_launcher(html, ",".join(car["vin"] for car in to_print), picked, label),
-        unsafe_allow_javascript=True,
-    )
-    st.caption("Sends only the make, model, year, VIN, purchase location, and X marks to the printer. Load the blank buyers guide, letter paper, 100% scale, no margins. BG is checked when the print window opens.")
+    st.iframe(print_launcher(html, ",".join(car["vin"] for car in to_print), picked, label), height=48)
+    st.caption("Prints the make, model, year, VIN, purchase location, and X marks onto the blank form. Letter paper, 100% scale, no margins. Allow the pop-up. BG is checked when the print window opens.")
 else:
     st.caption("Check Print on the cars you want, then print the buyers guides.")
 
