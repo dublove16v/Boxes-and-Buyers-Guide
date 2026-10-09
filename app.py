@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 import db
-from guide_html import guides_document, marks_for_year
+from guide_html import guides_document, marks_for_year, print_launcher
 from parse_boxes import parse_boxes_file, week_date_from_name
 from parse_dms import parse_dms_file
 
@@ -48,9 +48,9 @@ def _font_css() -> str:
 
 def warranty_label(year: int | None) -> str:
     marks = marks_for_year(year, AS_OF)
-    if marks["as_is"]:
+    if marks["asIs"]:
         return "As-Is"
-    if marks["limited"]:
+    if marks["limitedWarranty"]:
         return "Limited"
     return ""
 
@@ -162,6 +162,26 @@ picked = st.selectbox(
 )
 st.session_state["week_id"] = picked
 
+printed = st.query_params.get("printed", "")
+printed_week = st.query_params.get("week", "")
+if printed and printed_week == picked:
+    already = db.flags_for(picked)
+    rows = []
+    for vin in [part for part in printed.split(",") if part]:
+        flag = already.get(vin, {})
+        rows.append(
+            {
+                "vin": vin,
+                "here": bool(flag.get("here")),
+                "chip": bool(flag.get("chip")),
+                "bg": True,
+            }
+        )
+    if rows:
+        db.save_flags(picked, rows)
+    st.query_params.clear()
+    st.rerun()
+
 week_cars = db.week_vehicles(picked)
 cars = merge_stock(week_cars, dms_cars)
 flags = db.flags_for(picked)
@@ -234,30 +254,14 @@ to_print = [by_vin[vin] for vin in chosen["VIN"].tolist() if vin in by_vin and n
 if chosen.shape[0] and not to_print:
     st.warning("Dead deals stay on the list, but they are not printed.")
 elif to_print:
-    html = guides_document(to_print, shop, AS_OF)
-
-    def mark_guides_printed() -> None:
-        rows = []
-        for vin in [car["vin"] for car in to_print]:
-            current = next((row for row in flag_rows if row["vin"] == vin), None)
-            flag = current or flags.get(vin, {})
-            rows.append(
-                {
-                    "vin": vin,
-                    "here": bool(flag.get("here")),
-                    "chip": bool(flag.get("chip")),
-                    "bg": True,
-                }
-            )
-        db.save_flags(picked, rows)
-
-    st.download_button(
-        f"Download {len(to_print)} buyers guide{'s' if len(to_print) != 1 else ''}",
-        data=html.encode(),
-        file_name="buyers-guides.html",
-        mime="text/html",
-        on_click=mark_guides_printed,
+    nudge_x = st.number_input("Shift right (inches)", min_value=-1.0, max_value=1.0, value=0.0, step=0.05, key="nudge_x")
+    nudge_y = st.number_input("Shift down (inches)", min_value=-1.0, max_value=1.0, value=0.0, step=0.05, key="nudge_y")
+    html = guides_document(to_print, AS_OF, nudge_x, nudge_y)
+    label = f"Print {len(to_print)} buyers guide{'s' if len(to_print) != 1 else ''}"
+    st.html(
+        print_launcher(html, ",".join(car["vin"] for car in to_print), picked, label),
+        unsafe_allow_javascript=True,
     )
-    st.caption("Open the downloaded file. It sends itself to the printer. BG is checked as soon as you download it.")
+    st.caption("Sends only the make, model, year, VIN, purchase location, and X marks to the printer. Load the blank buyers guide, letter paper, 100% scale, no margins. BG is checked when the print window opens.")
 else:
-    st.caption("Check Print on the cars you want, then download the buyers guides.")
+    st.caption("Check Print on the cars you want, then print the buyers guides.")

@@ -1,8 +1,24 @@
 import base64
+import html
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-STAMP = "#1c1915"
+
+# Checkbox boxes measured on the shop's preprinted form, as % of the page.
+SPOTS = [
+    {"key": "asIs", "left": 9.7, "top": 20.14, "width": 4.16, "height": 3.03, "large": True},
+    {"key": "dealerWarranty", "left": 9.82, "top": 26.38, "width": 4.04, "height": 3.03, "large": True},
+    {"key": "fullWarranty", "left": 12.24, "top": 30.57, "width": 1.5, "height": 1.25, "large": False},
+    {"key": "limitedWarranty", "left": 12.12, "top": 32.98, "width": 1.62, "height": 1.25, "large": False},
+    {"key": "duration30", "left": 50.0, "top": 41.53, "width": 1.39, "height": 0.98, "large": False},
+    {"key": "duration60", "left": 50.0, "top": 43.85, "width": 1.39, "height": 0.98, "large": False},
+    {"key": "durationAsIs", "left": 50.0, "top": 46.26, "width": 1.39, "height": 0.98, "large": False},
+    {"key": "mfrStill", "left": 9.35, "top": 64.44, "width": 1.62, "height": 1.25, "large": False},
+    {"key": "mfrUsed", "left": 9.35, "top": 67.56, "width": 1.62, "height": 1.25, "large": False},
+    {"key": "otherUsed", "left": 9.35, "top": 69.7, "width": 1.62, "height": 1.25, "large": False},
+    {"key": "serviceContract", "left": 9.58, "top": 75.22, "width": 1.62, "height": 1.25, "large": False},
+]
 
 
 def _font_face() -> str:
@@ -22,102 +38,89 @@ def _font_face() -> str:
     """
 
 
+def _template_src() -> str:
+    path = ROOT / "forms" / "buyers-guide.jpg"
+    if not path.exists():
+        return ""
+    encoded = base64.b64encode(path.read_bytes()).decode()
+    return f"data:image/jpeg;base64,{encoded}"
+
+
 def marks_for_year(year: int | None, as_of: int) -> dict:
     blank = {
-        "as_is": False,
-        "dealer": False,
-        "full": False,
-        "limited": False,
-        "service": False,
+        "asIs": False,
+        "dealerWarranty": False,
+        "fullWarranty": False,
+        "limitedWarranty": False,
+        "duration30": False,
+        "duration60": False,
+        "durationAsIs": False,
+        "serviceContract": False,
+        "mfrStill": False,
+        "mfrUsed": False,
+        "otherUsed": False,
     }
     if year is None:
         return blank
     if as_of - year >= 10:
-        blank["as_is"] = True
-        blank["service"] = True
+        blank["asIs"] = True
+        blank["durationAsIs"] = True
+        blank["serviceContract"] = True
         return blank
-    blank["dealer"] = True
-    blank["limited"] = True
+    blank["dealerWarranty"] = True
+    blank["limitedWarranty"] = True
+    blank["duration60"] = True
+    blank["serviceContract"] = True
     return blank
 
 
-def _box(on: bool, large: bool) -> str:
-    size = "0.28in" if large else "0.16in"
-    font = "16pt" if large else "10pt"
-    mark = "X" if on else ""
-    return (
-        f'<span class="mark" style="width:{size};height:{size};font-size:{font}">{mark}</span>'
-    )
+def _esc(value) -> str:
+    return html.escape("" if value is None else str(value))
 
 
-def _blank(value: str) -> str:
-    shown = value.strip() or "&nbsp;&nbsp;&nbsp;"
-    return f'<span class="blank">{shown}</span>'
-
-
-def one_guide(car: dict, marks: dict, shop: dict) -> str:
-    show_percents = marks["limited"]
-    labor = shop["labor"].strip() if show_percents else ""
-    parts = shop["parts"].strip() if show_percents else ""
-    systems = shop["systems"].strip() if marks["dealer"] else ""
-    duration = shop["duration"].strip() if marks["dealer"] else ""
+def _page(car: dict, marks: dict, nudge_x: float, nudge_y: float, template: str) -> str:
     model = " ".join(part for part in (car.get("model") or "", car.get("trim") or "") if part)
     year = "" if car.get("year") is None else str(car["year"])
+    location = (car.get("auction") or "").strip()
+    ink = []
+    if location:
+        ink.append(f'<p class="guide-location">{_esc(location)}</p>')
+    ink.append(
+        f'<p class="guide-value" style="left:9.8%;top:13.99%;width:20%">{_esc(car.get("make"))}</p>'
+    )
+    ink.append(
+        f'<p class="guide-value" style="left:31.5%;top:13.99%;width:16%">{_esc(model)}</p>'
+    )
+    ink.append(
+        f'<p class="guide-value" style="left:47.3%;top:13.99%;width:10%">{_esc(year)}</p>'
+    )
+    ink.append(
+        f'<p class="guide-value guide-vin" style="left:68%;top:13.99%;width:28%">{_esc((car.get("vin") or "").upper())}</p>'
+    )
+    for spot in SPOTS:
+        if not marks.get(spot["key"]):
+            continue
+        klass = "guide-x guide-x-lg" if spot["large"] else "guide-x"
+        ink.append(
+            f'<span class="{klass}" style="left:{spot["left"]}%;top:{spot["top"]}%;width:{spot["width"]}%;height:{spot["height"]}%">X</span>'
+        )
+    image = f'<img class="guide-template" src="{template}" alt="">' if template else ""
     return f"""
-    <article class="guide">
-      <h1>BUYERS GUIDE</h1>
-      <p class="center"><b>IMPORTANT:</b> Spoken promises are difficult to enforce. Ask the dealer to put all promises in writing. Keep this form.</p>
-      <hr>
-      <div class="grid">
-        <div><span>VEHICLE MAKE</span><strong>{_esc(car.get("make"))}</strong></div>
-        <div><span>MODEL</span><strong>{_esc(model)}</strong></div>
-        <div><span>YEAR</span><strong>{_esc(year)}</strong></div>
-        <div><span>VEHICLE IDENTIFICATION NUMBER (VIN)</span><strong>{_esc(car.get("vin"))}</strong></div>
+    <article class="guide" style="--nudge-x:{nudge_x:.2f}in;--nudge-y:{nudge_y:.2f}in">
+      {image}
+      <div class="guide-ink">
+        {''.join(ink)}
       </div>
-      <hr>
-      <h2>WARRANTIES FOR THIS VEHICLE:</h2>
-      <div class="option">{_box(marks["as_is"], True)}<div>
-        <p class="title">AS IS - NO DEALER WARRANTY</p>
-        <p class="note">THE DEALER DOES NOT PROVIDE A WARRANTY FOR ANY REPAIRS AFTER SALE.</p>
-      </div></div>
-      <div class="option">{_box(marks["dealer"], True)}<p class="title">DEALER WARRANTY</p></div>
-      <div class="sub">
-        <div class="option">{_box(marks["full"], False)}<p class="fine"><b>FULL WARRANTY.</b></p></div>
-        <div class="option">{_box(marks["limited"], False)}<p class="fine"><b>LIMITED WARRANTY.</b> The dealer will pay {_blank(labor)}% of the labor and {_blank(parts)}% of the parts for the covered systems that fail during the warranty period. Ask the dealer for a copy of the warranty, and for any documents that explain warranty coverage, exclusions, and the dealer's repair obligations. <i>Implied warranties</i> under your state's laws may give you additional rights.</p></div>
-      </div>
-      <div class="systems">
-        <div>SYSTEMS COVERED:{f"<p>{_esc(systems)}</p>" if systems else ""}</div>
-        <div>DURATION:{f"<p>{_esc(duration)}</p>" if duration else ""}</div>
-      </div>
-      <hr>
-      <h2>NON-DEALER WARRANTIES FOR THIS VEHICLE:</h2>
-      <div class="option">{_box(False, False)}<p class="fine"><b>MANUFACTURER'S WARRANTY STILL APPLIES.</b> The manufacturer's original warranty has not expired on some components of the vehicle.</p></div>
-      <div class="option">{_box(False, False)}<p class="fine"><b>MANUFACTURER'S USED VEHICLE WARRANTY APPLIES.</b></p></div>
-      <div class="option">{_box(False, False)}<p class="fine"><b>OTHER USED VEHICLE WARRANTY APPLIES.</b></p></div>
-      <p class="fine">Ask the dealer for a copy of the warranty document and an explanation of warranty coverage, exclusions, and repair obligations.</p>
-      <div class="option">{_box(marks["service"], False)}<p class="fine"><b>SERVICE CONTRACT.</b> A service contract on this vehicle is available for an extra charge. Ask for details about coverage, deductible, price, and exclusions. If you buy a service contract within 90 days of your purchase of this vehicle, <i>implied warranties</i> under your state's laws may give you additional rights.</p></div>
-      <hr>
-      <p class="lead">ASK THE DEALER IF YOUR MECHANIC CAN INSPECT THE VEHICLE ON OR OFF THE LOT.</p>
-      <p class="fine"><b>OBTAIN A VEHICLE HISTORY REPORT AND CHECK FOR OPEN SAFETY RECALLS.</b> For information on how to obtain a vehicle history report, visit ftc.gov/usedcars. To check for open safety recalls, visit safercar.gov. You will need the vehicle identification number (VIN) shown above to make the best use of the resources on these sites.</p>
-      <p class="lead">SEE OTHER SIDE for important additional information, including a list of major defects that may occur in used motor vehicles.</p>
-      <p class="spanish">Si el concesionario gestiona la venta en español, pídale una copia de la Guía del Comprador en español.</p>
     </article>
     """
 
 
-def _esc(value) -> str:
-    text = "" if value is None else str(value)
-    return (
-        text.replace("&", "&")
-        .replace("<", "<")
-        .replace(">", ">")
-    )
-
-
-def guides_document(cars: list[dict], shop: dict, as_of: int) -> str:
-    pages = []
-    for car in cars:
-        pages.append(one_guide(car, marks_for_year(car.get("year"), as_of), shop))
+def guides_document(cars: list[dict], as_of: int, nudge_x: float = 0, nudge_y: float = 0) -> str:
+    template = _template_src()
+    pages = [
+        _page(car, marks_for_year(car.get("year"), as_of), nudge_x, nudge_y, template)
+        for car in cars
+    ]
     body = "\n".join(pages)
     return f"""<!doctype html>
 <html>
@@ -126,41 +129,104 @@ def guides_document(cars: list[dict], shop: dict, as_of: int) -> str:
 <title>Buyers Guides</title>
 <style>
 {_font_face()}
-@page {{ size: letter; margin: 0.3in; }}
+@page {{ size: letter; margin: 0; }}
 * {{ box-sizing: border-box; }}
-body {{ margin: 0; background: #fff; color: {STAMP}; font-family: "Century Gothic Pro", "Century Gothic", sans-serif; }}
+html, body {{ margin: 0; background: #fff; }}
 .guide {{
-  width: 7.9in; min-height: 10.2in; padding: 0.16in;
-  border: 3px solid {STAMP}; outline: 1px solid {STAMP}; outline-offset: -7px;
-  page-break-after: always; display: flex; flex-direction: column; gap: 0.06in;
+  position: relative;
+  width: 8.5in;
+  height: 11in;
+  overflow: hidden;
+  background: white;
+  color: #111;
+  font-family: "Century Gothic Pro", "Century Gothic", sans-serif;
+  break-after: page;
+  page-break-after: always;
 }}
-.guide:last-child {{ page-break-after: auto; }}
-h1 {{ margin: 0; text-align: center; font-size: 22pt; letter-spacing: 0.04em; line-height: 1; }}
-h2 {{ margin: 0; font-size: 8.5pt; letter-spacing: 0.04em; }}
-hr {{ border: 0; border-top: 1.5px solid {STAMP}; margin: 0; width: 100%; }}
-.center {{ margin: 0; text-align: center; font-size: 8pt; line-height: 1.25; }}
-.grid {{ display: grid; grid-template-columns: 1.25fr 1.35fr 0.48fr 1.85fr; gap: 0.1in; }}
-.grid span {{ display: block; font-size: 6.5pt; font-weight: 700; letter-spacing: 0.03em; }}
-.grid strong {{ display: block; min-height: 0.32in; border-bottom: 1.25px solid {STAMP}; font-size: 11pt; }}
-.option {{ display: grid; grid-template-columns: auto 1fr; gap: 0.08in; align-items: start; }}
-.sub {{ margin-left: 0.36in; display: flex; flex-direction: column; gap: 0.04in; }}
-.mark {{ display: inline-flex; align-items: center; justify-content: center; border: 1.75px solid {STAMP}; font-weight: 700; line-height: 1; }}
-.title {{ margin: 0; font-size: 13pt; font-weight: 700; line-height: 1.05; }}
-.note {{ margin: 0; font-size: 7.5pt; font-weight: 700; line-height: 1.2; }}
-.fine {{ margin: 0; font-size: 7.4pt; line-height: 1.22; }}
-.blank {{ display: inline-block; min-width: 0.38in; border-bottom: 1px solid {STAMP}; text-align: center; font-weight: 700; }}
-.systems {{ display: grid; grid-template-columns: 1.7fr 0.9fr; min-height: 1.15in; border: 1.5px solid {STAMP}; flex: 1; }}
-.systems div {{ padding: 0.04in 0.08in; font-size: 8pt; font-weight: 700; }}
-.systems div + div {{ border-left: 1.5px solid {STAMP}; }}
-.systems p {{ margin: 0.04in 0 0; font-size: 9pt; white-space: pre-wrap; }}
-.lead {{ margin: 0; font-size: 7.6pt; font-weight: 700; line-height: 1.25; }}
-.spanish {{ margin: 0; font-size: 8pt; font-style: italic; }}
-@media screen {{ body {{ background: #e7e2d8; }} .guide {{ margin: 0.3in auto; background: white; }} }}
+.guide:last-child {{ break-after: auto; page-break-after: auto; }}
+.guide-template {{
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}}
+.guide-ink {{
+  position: absolute;
+  inset: 0;
+  transform: translate(var(--nudge-x, 0in), var(--nudge-y, 0in));
+}}
+.guide-value {{
+  position: absolute;
+  margin: 0;
+  font-size: 10pt;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+}}
+.guide-vin {{ font-size: 9pt; letter-spacing: 0.02em; }}
+.guide-location {{
+  position: absolute;
+  top: 0.18in;
+  right: 0.22in;
+  max-width: 3.6in;
+  margin: 0;
+  text-align: right;
+  font-size: 11pt;
+  font-weight: 700;
+  line-height: 1.1;
+}}
+.guide-x {{
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  line-height: 1;
+  font-size: 9pt;
+}}
+.guide-x-lg {{ font-size: 20pt; }}
+@media print {{
+  .guide-template {{ display: none !important; }}
+}}
+@media screen {{
+  body {{ background: #e7e2d8; }}
+  .guide {{ margin: 0.2in auto; box-shadow: 0 8px 24px rgba(0,0,0,0.12); }}
+}}
 </style>
 </head>
 <body>
 {body}
-<script>window.addEventListener("load", () => setTimeout(() => window.print(), 300));</script>
 </body>
 </html>
 """
+
+
+def print_launcher(document: str, vins: str, week_id: str, label: str) -> str:
+    payload = json.dumps(document).replace("</", "<\\/")
+    return f"""
+    <button id="print-guides" type="button" style="height:2.4rem;padding:0 1rem;border:0;border-radius:0.5rem;background:#1f4d3a;color:#f4f1ea;font-weight:700;cursor:pointer;">
+      {html.escape(label)}
+    </button>
+    <script>
+    const doc = {payload};
+    document.getElementById("print-guides").addEventListener("click", () => {{
+      const w = window.open("", "_blank");
+      if (!w) {{
+        alert("Allow pop-ups for this site, then click Print again.");
+        return;
+      }}
+      w.document.open();
+      w.document.write(doc);
+      w.document.close();
+      const url = new URL(window.location.href);
+      url.searchParams.set("printed", {json.dumps(vins)});
+      url.searchParams.set("week", {json.dumps(week_id)});
+      setTimeout(() => w.print(), 400);
+      setTimeout(() => {{
+        window.location.href = url.toString();
+      }}, 900);
+    }});
+    </script>
+    """
