@@ -250,6 +250,41 @@ def load_dms() -> tuple[str, list[dict]]:
     return row["name"] or "", cars if isinstance(cars, list) else []
 
 
+def apply_dead_catalog() -> int:
+    """Mark cars that were struck through on the original boxes workbook."""
+    path = ROOT / "seed" / "dead.json"
+    if not path.exists():
+        return 0
+    catalog = json.loads(path.read_text())
+    conn = connect()
+    weeks = {row["name"]: row["id"] for row in conn.execute("select id, name from weeks")}
+    changed = 0
+    with conn:
+        for name, vins in catalog.items():
+            week_id = weeks.get(name)
+            if not week_id:
+                continue
+            wanted = {str(vin).upper() for vin in vins}
+            rows = conn.execute(
+                "select vin, dead from vehicles where week_id = ?",
+                (week_id,),
+            ).fetchall()
+            turn_on = [row["vin"] for row in rows if row["vin"].upper() in wanted and not row["dead"]]
+            turn_off = [row["vin"] for row in rows if row["vin"].upper() not in wanted and row["dead"]]
+            for vin in turn_on:
+                conn.execute(
+                    "update vehicles set dead = 1 where week_id = ? and vin = ?",
+                    (week_id, vin),
+                )
+            for vin in turn_off:
+                conn.execute(
+                    "update vehicles set dead = 0 where week_id = ? and vin = ?",
+                    (week_id, vin),
+                )
+            changed += len(turn_on) + len(turn_off)
+    return changed
+
+
 def import_seed_csvs() -> int:
     """Load the shipped BOXES folder into the database. Skips weeks already saved."""
     folder = ROOT / "seed" / "csv"

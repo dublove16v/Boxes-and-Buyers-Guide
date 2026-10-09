@@ -128,15 +128,29 @@ def vehicles_from_rows(rows: list[tuple[list[str], bool]]) -> list[dict]:
     return cars
 
 
+def _cell_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, int):
+        return str(value)
+    if hasattr(value, "strftime"):
+        return value.strftime("%m/%d/%Y %H:%M")
+    return str(value).strip()
+
+
 def _xlsx_rows(data: bytes) -> list[tuple[list[str], list[bool]]]:
-    book = load_workbook(BytesIO(data), data_only=True)
+    book = load_workbook(BytesIO(data), data_only=False)
     sheet = book.active
     rows = []
     for row in sheet.iter_rows():
         cells = []
         struck = []
         for cell in row:
-            value = "" if cell.value is None else str(cell.value).strip()
+            value = _cell_text(cell.value)
             cells.append(value)
             struck.append(bool(value and cell.font is not None and cell.font.strike))
         if any(cells):

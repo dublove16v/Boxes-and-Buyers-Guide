@@ -1,4 +1,5 @@
 import base64
+import html
 import json
 from datetime import date
 from pathlib import Path
@@ -148,6 +149,7 @@ st.markdown(
 )
 
 imported = db.import_seed_csvs()
+db.apply_dead_catalog()
 if imported:
     st.toast(f"Loaded {imported} weeks from the boxes folder.")
 
@@ -237,11 +239,36 @@ for car in cars:
 frame = sheet_frame(shown, flags)
 live = [car for car in cars if not car["dead"]]
 st.caption(
-    f"{len(live)} coming in · {sum(1 for car in cars if car['dead'])} dead · "
+    f"{len(live)} coming in · {len(dead)} dead · "
     f"{sum(1 for car in live if flags.get(car['vin'], {}).get('here'))} here · "
     f"{sum(1 for car in live if flags.get(car['vin'], {}).get('chip'))} chip · "
     f"{sum(1 for car in live if flags.get(car['vin'], {}).get('bg'))} bg"
 )
+
+if dead and show == "All":
+    dead_body = []
+    for car in dead:
+        bits = [
+            car["day_label"],
+            f"{car['year'] or ''} {car['make']} {car['model']}".strip(),
+            car["vin"],
+            car["color"],
+            car["odometer"],
+            car["auction"],
+            "Dead deal",
+        ]
+        cells = "".join(
+            f'<td style="padding:0.35rem 0.6rem;color:#8c3a32;text-decoration:line-through;">{html.escape(str(bit or ""))}</td>'
+            for bit in bits
+        )
+        dead_body.append(f"<tr>{cells}</tr>")
+    st.html(
+        '<p style="margin:0.4rem 0;color:#8c3a32;font-weight:700;">Dead deals</p>'
+        '<p style="margin:0 0 0.4rem;color:#8c3a32;">Crossed off on the boxes sheet. These cannot be checked and are not in the filters.</p>'
+        '<table style="width:100%;border-collapse:collapse;background:#f8ecea;">'
+        + "".join(dead_body)
+        + "</table>"
+    )
 
 edited = st.data_editor(
     frame,
@@ -297,26 +324,3 @@ elif to_print:
 else:
     st.caption("Check Print on the cars you want, then print the buyers guides.")
 
-if dead and show == "All":
-    st.markdown("**Dead deals**")
-    st.caption("Crossed off on the boxes sheet. Greyed out, not selectable, and left out of the filters.")
-    dead_rows = []
-    for car in dead:
-        dead_rows.append(
-            {
-                "Day": struck(car["day_label"], True),
-                "Vehicle": struck(f"{car['year'] or ''} {car['make']} {car['model']}".strip(), True),
-                "VIN": struck(car["vin"], True),
-                "Color": struck(car["color"], True),
-                "Miles": struck(car["odometer"], True),
-                "Lane": struck(car["lane"], True),
-                "Lot": struck(car["lot"], True),
-                "Auction": struck(car["auction"], True),
-            }
-        )
-    dead_frame = pd.DataFrame(dead_rows)
-    st.dataframe(
-        dead_frame.style.set_properties(**{"color": "#8a8175", "text-decoration": "line-through"}),
-        hide_index=True,
-        width="stretch",
-    )
