@@ -1,19 +1,56 @@
 import base64
+import json
 from datetime import date
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-import db
-from guide_html import guides_document, marks_for_year, print_launcher
-from parse_boxes import parse_boxes_file, week_date_from_name
-from parse_dms import parse_dms_file
+st.set_page_config(page_title="Boxes and Buyer's Guide Tool", layout="wide")
+
+try:
+    import db
+    from guide_html import guides_document, marks_for_year
+    from parse_boxes import parse_boxes_file, week_date_from_name
+    from parse_dms import parse_dms_file
+except Exception as boot_error:
+    import traceback
+
+    detail = traceback.format_exc()
+    for chunk in ("/mount/src/boxes-and-buyers-guide/", "/workspace/streamlit-app/", "/workspace/"):
+        detail = detail.replace(chunk, "")
+    st.error("The desk could not start.")
+    st.code(detail[-4000:])
+    st.caption(type(boot_error).__name__)
+    st.stop()
 
 ROOT = Path(__file__).resolve().parent
 AS_OF = date.today().year
 
-st.set_page_config(page_title="Boxes and Buyer's Guide Tool", layout="wide")
+
+def print_launcher(document: str, vins: str, week_id: str, label: str) -> str:
+    payload = json.dumps(document).replace("</", "<\\/")
+    safe_label = label.replace("&", "&").replace("<", "<").replace(">", ">")
+    return (
+        '<button id="print-guides" type="button" style="height:2.4rem;padding:0 1rem;border:0;border-radius:0.5rem;background:#1f4d3a;color:#f4f1ea;font-weight:700;cursor:pointer;">'
+        + safe_label
+        + "</button><script>const doc = "
+        + payload
+        + ";document.getElementById('print-guides').addEventListener('click', () => {"
+        + "const w = window.open('', '_blank');"
+        + "if (!w) { alert('Allow pop-ups for this site, then click Print again.'); return; }"
+        + "w.document.open(); w.document.write(doc); w.document.close();"
+        + "const url = new URL(window.location.href);"
+        + "url.searchParams.set('printed', "
+        + json.dumps(vins)
+        + ");"
+        + "url.searchParams.set('week', "
+        + json.dumps(week_id)
+        + ");"
+        + "setTimeout(() => w.print(), 400);"
+        + "setTimeout(() => { window.location.href = url.toString(); }, 900);"
+        + "});</script>"
+    )
 
 
 def _font_css() -> str:
@@ -191,7 +228,10 @@ show = st.radio(
     horizontal=True,
 )
 shown = []
+dead = [car for car in cars if car["dead"]]
 for car in cars:
+    if car["dead"]:
+        continue
     flag = flags.get(car["vin"], {})
     if show == "Here, no chip" and not (flag.get("here") and not flag.get("chip")):
         continue
@@ -265,3 +305,27 @@ elif to_print:
     st.caption("Sends only the make, model, year, VIN, purchase location, and X marks to the printer. Load the blank buyers guide, letter paper, 100% scale, no margins. BG is checked when the print window opens.")
 else:
     st.caption("Check Print on the cars you want, then print the buyers guides.")
+
+if dead and show == "All":
+    st.markdown("**Dead deals**")
+    st.caption("Crossed off on the boxes sheet. Greyed out, not selectable, and left out of the filters.")
+    dead_rows = []
+    for car in dead:
+        dead_rows.append(
+            {
+                "Day": struck(car["day_label"], True),
+                "Vehicle": struck(f"{car['year'] or ''} {car['make']} {car['model']}".strip(), True),
+                "VIN": struck(car["vin"], True),
+                "Color": struck(car["color"], True),
+                "Miles": struck(car["odometer"], True),
+                "Lane": struck(car["lane"], True),
+                "Lot": struck(car["lot"], True),
+                "Auction": struck(car["auction"], True),
+            }
+        )
+    dead_frame = pd.DataFrame(dead_rows)
+    st.dataframe(
+        dead_frame.style.set_properties(**{"color": "#8a8175", "text-decoration": "line-through"}),
+        hide_index=True,
+        width="stretch",
+    )

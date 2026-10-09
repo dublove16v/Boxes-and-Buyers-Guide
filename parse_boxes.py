@@ -76,7 +76,7 @@ def vehicles_from_rows(rows: list[tuple[list[str], bool]]) -> list[dict]:
     cars = []
     banner = ""
     for index in range(header_at + 1, len(rows)):
-        cells, dead = rows[index]
+        cells, struck_cells = rows[index]
         if _is_day_banner(cells):
             banner = " ".join(value.strip() for value in cells if value.strip())
             continue
@@ -99,7 +99,15 @@ def vehicles_from_rows(rows: list[tuple[list[str], bool]]) -> list[dict]:
             odometer = f"{int(float(odo_raw)):,}" if odo_raw else ""
         except ValueError:
             odometer = _cell(cells, odo_col)
-        struck = any("\u0336" in value for value in (vin, _cell(cells, make_col), _cell(cells, model_col)))
+        text_struck = any("\u0336" in value for value in (vin, _cell(cells, make_col), _cell(cells, model_col)))
+        identity_struck = any(
+            index < len(struck_cells) and struck_cells[index]
+            for index in (vin_col, make_col, year_col)
+            if index >= 0
+        )
+        struck_filled = sum(
+            1 for index, value in enumerate(cells) if value.strip() and index < len(struck_cells) and struck_cells[index]
+        )
         cars.append(
             {
                 "vin": vin,
@@ -114,30 +122,29 @@ def vehicles_from_rows(rows: list[tuple[list[str], bool]]) -> list[dict]:
                 "auction": auction,
                 "day_label": label or banner or "Undated",
                 "sort_key": sort_key or "9999-99-99",
-                "dead": dead or struck,
+                "dead": text_struck or identity_struck or struck_filled >= 3,
             }
         )
     return cars
 
 
-def _xlsx_rows(data: bytes) -> list[tuple[list[str], bool]]:
+def _xlsx_rows(data: bytes) -> list[tuple[list[str], list[bool]]]:
     book = load_workbook(BytesIO(data), data_only=True)
     sheet = book.active
     rows = []
     for row in sheet.iter_rows():
         cells = []
-        dead = False
+        struck = []
         for cell in row:
             value = "" if cell.value is None else str(cell.value).strip()
             cells.append(value)
-            if value and cell.font is not None and cell.font.strike:
-                dead = True
+            struck.append(bool(value and cell.font is not None and cell.font.strike))
         if any(cells):
-            rows.append((cells, dead))
+            rows.append((cells, struck))
     return rows
 
 
-def _xls_rows(data: bytes) -> list[tuple[list[str], bool]]:
+def _xls_rows(data: bytes) -> list[tuple[list[str], list[bool]]]:
     import xlrd
 
     try:
@@ -148,7 +155,7 @@ def _xls_rows(data: bytes) -> list[tuple[list[str], bool]]:
     rows = []
     for row_index in range(sheet.nrows):
         cells = []
-        dead = False
+        struck = []
         for col_index in range(sheet.ncols):
             cell = sheet.cell(row_index, col_index)
             value = "" if cell.value in (None, "") else str(cell.value).strip()
@@ -162,17 +169,21 @@ def _xls_rows(data: bytes) -> list[tuple[list[str], bool]]:
                     font = book.font_list[xf.font_index]
                 except (IndexError, AttributeError):
                     font = None
-            if value and font is not None and getattr(font, "struck_out", 0):
-                dead = True
+            struck.append(bool(value and font is not None and getattr(font, "struck_out", 0)))
         if any(cells):
-            rows.append((cells, dead))
+            rows.append((cells, struck))
     return rows
 
 
-def _csv_rows(data: bytes) -> list[tuple[list[str], bool]]:
+def _csv_rows(data: bytes) -> list[tuple[list[str], list[bool]]]:
     text = data.decode("utf-8-sig", errors="replace")
     reader = csv.reader(StringIO(text))
-    return [([cell.strip() for cell in row], False) for row in reader if any(cell.strip() for cell in row)]
+    parsed = []
+    for row in reader:
+        cells = [cell.strip() for cell in row]
+        if any(cells):
+            parsed.append((cells, [False] * len(cells)))
+    return parsed
 
 
 def parse_boxes_file(data: bytes, filename: str) -> list[dict]:
