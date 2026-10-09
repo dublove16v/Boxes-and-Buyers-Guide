@@ -4,6 +4,7 @@ import json
 from datetime import date
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
 st.set_page_config(page_title="Boxes and Buyer's Guide Tool", layout="wide")
@@ -115,6 +116,31 @@ def flag_box(label: str, key: str, default: bool) -> bool:
     return st.checkbox(label, key=key)
 
 
+def sheet_frame(cars: list[dict], flags: dict[str, dict]) -> pd.DataFrame:
+    rows = []
+    for car in cars:
+        flag = flags.get(car["vin"], {})
+        rows.append(
+            {
+                "HERE": bool(flag.get("here")),
+                "CHIP": bool(flag.get("chip")),
+                "BG": bool(flag.get("bg")),
+                "Print": False,
+                "Day": car["day_label"],
+                "Year": car["year"] or "",
+                "Vehicle": f"{car['make']} {car['model']}".strip(),
+                "VIN": car["vin"],
+                "Color": car["color"],
+                "Miles": car["odometer"],
+                "Lane": car["lane"],
+                "Lot": car["lot"],
+                "Auction": car["auction"],
+                "Guide": warranty_label(car["year"]),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def merge_stock(week_cars: list[dict], stock: list[dict]) -> list[dict]:
     vins = {car["vin"] for car in week_cars}
     extra = [car for car in stock if car["vin"] not in vins]
@@ -202,7 +228,10 @@ if printed and printed_week == picked:
         )
     if rows:
         db.save_flags(picked, rows)
+    layout = st.query_params.get("layout", "")
     st.query_params.clear()
+    if layout:
+        st.query_params["layout"] = layout
     st.rerun()
 
 week_cars = db.week_vehicles(picked)
@@ -239,15 +268,29 @@ st.markdown(
     """
     <style>
     div[data-testid="stVerticalBlockBorderWrapper"] {
-      padding: 0.35rem 0.7rem 0.25rem;
-      margin-bottom: 0.35rem;
+      padding: 0.2rem 0.55rem 0.05rem;
+      margin-bottom: 0.2rem;
     }
-    div[data-testid="stCheckbox"] { min-height: 1.6rem; }
-    div[data-testid="stCheckbox"] label p { font-size: 0.92rem; }
+    div[data-testid="stCheckbox"] { min-height: 0; }
     </style>
     """,
     unsafe_allow_html=True,
 )
+st.html(
+    """
+    <script>
+    (function () {
+      const want = window.innerWidth <= 720 ? "mobile" : "desktop";
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("layout") === want) return;
+      url.searchParams.set("layout", want);
+      window.location.replace(url.toString());
+    })();
+    </script>
+    """,
+    unsafe_allow_javascript=True,
+)
+mobile = st.query_params.get("layout") == "mobile"
 
 nonce = st.session_state.get("print_nonce", 0)
 for vin in st.session_state.pop("clear_print", []):
@@ -255,40 +298,86 @@ for vin in st.session_state.pop("clear_print", []):
 flag_rows = []
 to_print = []
 
-def car_card(car: dict, dead_deal: bool) -> None:
-    line = car_line(car)
-    with st.container(border=True):
-        if dead_deal:
+if mobile:
+    def car_card(car: dict, dead_deal: bool) -> None:
+        line = car_line(car)
+        with st.container(border=True):
+            if dead_deal:
+                st.markdown(
+                    f'<p style="margin:0;color:#8c3a32;font-weight:700;text-decoration:line-through;">{html.escape(line)}</p>'
+                    '<p style="margin:0.1rem 0 0;color:#8c3a32;font-size:0.8rem;">Dead deal</p>',
+                    unsafe_allow_html=True,
+                )
+                return
+            flag = flags.get(car["vin"], {})
+            here_col, chip_col, bg_col, print_col = st.columns(4, gap="xxsmall", wrap=False)
+            with here_col:
+                here = flag_box("Here", f"here-{picked}-{car['vin']}-{nonce}", bool(flag.get("here")))
+            with chip_col:
+                chip = flag_box("Chip", f"chip-{picked}-{car['vin']}-{nonce}", bool(flag.get("chip")))
+            with bg_col:
+                bg = flag_box("BG", f"bg-{picked}-{car['vin']}-{nonce}", bool(flag.get("bg")))
+            with print_col:
+                selected = flag_box("Print", f"print-{picked}-{car['vin']}", False)
             st.markdown(
-                f'<p style="margin:0;color:#8c3a32;font-weight:700;text-decoration:line-through;">{html.escape(line)}</p>'
-                '<p style="margin:0.1rem 0 0;color:#8c3a32;font-size:0.8rem;">Dead deal</p>',
+                f'<p style="margin:0.05rem 0 0.15rem;font-weight:700;line-height:1.2;">{html.escape(line)}</p>',
                 unsafe_allow_html=True,
             )
-            return
-        flag = flags.get(car["vin"], {})
-        here_col, chip_col, bg_col, print_col = st.columns(4)
-        with here_col:
-            here = flag_box("Here", f"here-{picked}-{car['vin']}-{nonce}", bool(flag.get("here")))
-        with chip_col:
-            chip = flag_box("Chip", f"chip-{picked}-{car['vin']}-{nonce}", bool(flag.get("chip")))
-        with bg_col:
-            bg = flag_box("BG", f"bg-{picked}-{car['vin']}-{nonce}", bool(flag.get("bg")))
-        with print_col:
-            selected = flag_box("Print", f"print-{picked}-{car['vin']}", False)
-        st.markdown(
-            f'<p style="margin:0.05rem 0 0.15rem;font-weight:700;line-height:1.25;">{html.escape(line)}</p>',
-            unsafe_allow_html=True,
-        )
-        flag_rows.append({"vin": car["vin"], "here": here, "chip": chip, "bg": bg})
-        if selected:
-            to_print.append(car)
+            flag_rows.append({"vin": car["vin"], "here": here, "chip": chip, "bg": bg})
+            if selected:
+                to_print.append(car)
 
-if not shown and not dead_shown:
-    st.caption("Nothing matches that search." if search.strip() else "No cars on this list.")
-for car in shown:
-    car_card(car, False)
-for car in dead_shown:
-    car_card(car, True)
+    if not shown and not dead_shown:
+        st.caption("Nothing matches that search." if search.strip() else "No cars on this list.")
+    for car in shown:
+        car_card(car, False)
+    for car in dead_shown:
+        car_card(car, True)
+else:
+    if shown:
+        edited = st.data_editor(
+            sheet_frame(shown, flags),
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "HERE": st.column_config.CheckboxColumn(required=True),
+                "CHIP": st.column_config.CheckboxColumn(required=True),
+                "BG": st.column_config.CheckboxColumn(required=True),
+                "Print": st.column_config.CheckboxColumn(required=True),
+                "Day": st.column_config.TextColumn(disabled=True),
+                "Year": st.column_config.TextColumn(disabled=True, width="small"),
+                "Vehicle": st.column_config.TextColumn(disabled=True),
+                "VIN": st.column_config.TextColumn(disabled=True),
+                "Color": st.column_config.TextColumn(disabled=True, width="small"),
+                "Miles": st.column_config.TextColumn(disabled=True, width="small"),
+                "Lane": st.column_config.TextColumn(disabled=True, width="small"),
+                "Lot": st.column_config.TextColumn(disabled=True, width="small"),
+                "Auction": st.column_config.TextColumn(disabled=True),
+                "Guide": st.column_config.TextColumn(disabled=True, width="small"),
+            },
+            key=f"grid-{picked}-{show}-{len(shown)}-{nonce}",
+        )
+        by_vin = {car["vin"]: car for car in shown}
+        for _, row in edited.iterrows():
+            flag_rows.append(
+                {
+                    "vin": row["VIN"],
+                    "here": bool(row["HERE"]),
+                    "chip": bool(row["CHIP"]),
+                    "bg": bool(row["BG"]),
+                }
+            )
+            if bool(row["Print"]) and row["VIN"] in by_vin:
+                to_print.append(by_vin[row["VIN"]])
+    elif search.strip():
+        st.caption("Nothing matches that search.")
+    if dead_shown:
+        st.caption("Dead deals")
+        for car in dead_shown:
+            st.markdown(
+                f'<p style="margin:0;color:#8c3a32;text-decoration:line-through;">{html.escape(car_line(car))}</p>',
+                unsafe_allow_html=True,
+            )
 
 expected = [
     {
