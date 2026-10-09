@@ -5,19 +5,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
-# Checkbox boxes measured on the shop's preprinted form, as % of the page.
+# Checkbox boxes measured on the 8.5x11 scan of the shop form, as % of the page.
 SPOTS = [
-    {"key": "asIs", "left": 9.7, "top": 20.14, "width": 4.16, "height": 3.03, "large": True},
-    {"key": "dealerWarranty", "left": 9.82, "top": 26.38, "width": 4.04, "height": 3.03, "large": True},
-    {"key": "fullWarranty", "left": 12.24, "top": 30.57, "width": 1.5, "height": 1.25, "large": False},
-    {"key": "limitedWarranty", "left": 12.352, "top": 33.142, "width": 1.62, "height": 1.25, "large": False},
-    {"key": "duration30", "left": 51.76, "top": 41.315, "width": 1.39, "height": 0.98, "large": False},
-    {"key": "duration60", "left": 49.977, "top": 43.796, "width": 1.39, "height": 0.98, "large": False},
-    {"key": "durationAsIs", "left": 49.977, "top": 46.045, "width": 1.39, "height": 0.98, "large": False},
-    {"key": "mfrStill", "left": 9.35, "top": 64.44, "width": 1.62, "height": 1.25, "large": False},
-    {"key": "mfrUsed", "left": 9.35, "top": 67.56, "width": 1.62, "height": 1.25, "large": False},
-    {"key": "otherUsed", "left": 9.35, "top": 69.7, "width": 1.62, "height": 1.25, "large": False},
-    {"key": "serviceContract", "left": 9.823, "top": 75.184, "width": 1.62, "height": 1.25, "large": False},
+    {"key": "asIs", "left": 9.412, "top": 19.667, "width": 4.078, "height": 3.091, "large": True},
+    {"key": "dealerWarranty", "left": 9.490, "top": 25.939, "width": 4.000, "height": 3.091, "large": True},
+    {"key": "fullWarranty", "left": 11.882, "top": 30.212, "width": 1.529, "height": 1.182, "large": False},
+    {"key": "limitedWarranty", "left": 11.843, "top": 32.606, "width": 1.529, "height": 1.182, "large": False},
+    {"key": "duration30", "left": 50.118, "top": 41.121, "width": 1.451, "height": 0.939, "large": False},
+    {"key": "duration60", "left": 50.118, "top": 43.455, "width": 1.451, "height": 0.939, "large": False},
+    {"key": "durationAsIs", "left": 50.118, "top": 45.818, "width": 1.412, "height": 0.970, "large": False},
+    {"key": "mfrStill", "left": 8.980, "top": 64.242, "width": 1.569, "height": 1.212, "large": False},
+    {"key": "mfrUsed", "left": 8.980, "top": 67.364, "width": 1.569, "height": 1.212, "large": False},
+    {"key": "otherUsed", "left": 8.941, "top": 69.576, "width": 1.569, "height": 1.212, "large": False},
+    {"key": "serviceContract", "left": 9.176, "top": 75.152, "width": 1.569, "height": 1.182, "large": False},
 ]
 
 
