@@ -178,7 +178,11 @@ with st.sidebar:
             st.session_state["boxes_token"] = getattr(boxes_file, "file_id", None) or boxes_file.name
             st.session_state["week_id"] = week_id
             st.rerun()
-    dms_file = st.file_uploader("DealerTrack report", type=["xlsx", "xls", "csv"])
+    dms_file = st.file_uploader(
+        "DealerTrack report",
+        type=["xlsx", "xls", "csv"],
+        help="Inventory or deal report. Trade-in columns are added to the Key Advantage file.",
+    )
     if dms_file is not None and st.session_state.get("dms_token") != (getattr(dms_file, "file_id", None) or dms_file.name):
         stock = parse_dms_file(dms_file.getvalue(), dms_file.name, AS_OF)
         if not stock:
@@ -188,7 +192,9 @@ with st.sidebar:
             st.session_state["dms_token"] = getattr(dms_file, "file_id", None) or dms_file.name
             st.rerun()
     if dms_name:
-        st.caption(f"{dms_name} · {len(dms_cars)} in stock")
+        trade_on_report = sum(1 for car in dms_cars if "trade" in str(car.get("source") or "").lower())
+        detail = f"{trade_on_report} trades" if trade_on_report else f"{len(dms_cars)} vehicles"
+        st.caption(f"{dms_name} · {detail}")
 
 if not weeks:
     st.info("Upload this week's boxes sheet to start the list. Cars crossed off on the sheet stay on the list as dead deals.")
@@ -280,7 +286,7 @@ st.download_button(
 )
 st.caption(
     f"Tab-delimited import for Supra Key Advantage. {purchase_count} purchases from this week's boxes"
-    + (f" and {trade_count} trades from the DealerTrack report." if dms_cars else ". Upload the DealerTrack report to include trades.")
+    + (f" and {trade_count} trades from the DealerTrack report." if dms_cars else ". Upload a DealerTrack report in the sidebar to include trades.")
     + " Dead deals are left out. In Key Advantage use Vehicle Information, then Import Vehicle Information. Do not open the file in Excel first."
 )
 

@@ -21,10 +21,11 @@ def intake_label(car: dict) -> str:
 
 
 def key_advantage_cars(week_cars: list[dict], dms_cars: list[dict]) -> list[dict]:
-    """Auction purchases from the boxes week, plus DealerTrack cars not already listed.
+    """Auction purchases from the boxes week, plus trades from the DealerTrack report.
 
-    DealerTrack rows are the trades (and any other intake) that never appear on the
-    boxes sheet. Dead deals are left out. The same VIN is written once.
+    When the report has trade-in columns or a trade source, only those trades are
+    added. Otherwise every DealerTrack car that is not already a purchase is added
+    as a trade. Dead deals are left out. The same VIN is written once.
     """
     chosen = []
     seen = set()
@@ -39,7 +40,9 @@ def key_advantage_cars(week_cars: list[dict], dms_cars: list[dict]) -> list[dict
         row["vin"] = vin
         row["intake"] = "Purchase"
         chosen.append(row)
-    for car in dms_cars:
+    explicit = [car for car in dms_cars if "trade" in _clean(car.get("source")).lower()]
+    extras = explicit if explicit else list(dms_cars)
+    for car in extras:
         vin = _clean(car.get("vin")).upper()
         if not vin or vin in seen:
             continue

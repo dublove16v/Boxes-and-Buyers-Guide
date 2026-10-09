@@ -84,10 +84,15 @@ def _norm(value: str) -> str:
 
 
 def _columns(row: list[str]) -> dict | None:
-    cols: dict[str, int] = {}
+    cols: dict = {}
     for index, cell in enumerate(row):
         key = _norm(cell)
         if not key:
+            continue
+        trade = _trade_field(key)
+        if trade:
+            slot, field = trade
+            cols.setdefault("trade_slots", {}).setdefault(slot, {})[field] = index
             continue
         if key == "vin" or key.endswith(" vin"):
             cols["vin"] = index
@@ -105,13 +110,37 @@ def _columns(row: list[str]) -> dict | None:
             cols["miles"] = index
         elif "exterior" in key or key == "color":
             cols["color"] = index
+        elif key == "trim":
+            cols["trim"] = index
         elif key in ("source", "acquisition") or key in ("deal type", "stock type", "inventory source"):
             cols["source"] = index
-    if "vin" not in cols:
+    if "vin" not in cols and not cols.get("trade_slots"):
         return None
-    if "description" not in cols and "make" not in cols and "year" not in cols:
+    if (
+        "vin" in cols
+        and "description" not in cols
+        and "make" not in cols
+        and "year" not in cols
+        and not cols.get("trade_slots")
+    ):
         return None
     return cols
+
+
+def _trade_field(key: str) -> tuple[str, str] | None:
+    match = re.match(
+        r"trade(?:\s*in)?\s*(\d*)\s*(vin|year|yr|make|model|trim|color|stock|odometer|mileage|miles|odo)\b",
+        key,
+    )
+    if not match:
+        return None
+    slot = match.group(1) or "1"
+    field = match.group(2)
+    if field == "yr":
+        field = "year"
+    elif field in ("mileage", "miles", "odo"):
+        field = "odometer"
+    return slot, field
 
 
 def _cell(row: list[str], index: int | None) -> str:
@@ -141,47 +170,75 @@ def vehicles_from_table(rows: list[list[str]], as_of: int) -> list[dict]:
             break
     if not columns:
         return []
-    cars = []
-    seen = set()
+    by_vin: dict[str, dict] = {}
+
+    def keep(car: dict) -> None:
+        vin = car["vin"]
+        old = by_vin.get(vin)
+        if old is None or ("trade" in car.get("source", "").lower() and "trade" not in old.get("source", "").lower()):
+            by_vin[vin] = car
+
     for row in rows[header_at + 1 :]:
-        vin = re.sub(r"\s+", "", _cell(row, columns.get("vin"))).upper()
-        if not VIN_OK.match(vin) or vin in seen:
-            continue
-        year_raw = _cell(row, columns.get("year"))
-        make_raw = _cell(row, columns.get("make"))
-        if year_raw and make_raw:
-            year = model_year(year_raw, as_of)
-            make = expand_make(make_raw)
-            model = _cell(row, columns.get("model"))
-        else:
-            described = DESC.match(_cell(row, columns.get("description")))
-            if not described:
+        if "vin" in columns:
+            vin = re.sub(r"\s+", "", _cell(row, columns.get("vin"))).upper()
+            if VIN_OK.match(vin):
+                year_raw = _cell(row, columns.get("year"))
+                make_raw = _cell(row, columns.get("make"))
+                if year_raw and make_raw:
+                    year = model_year(year_raw, as_of)
+                    make = expand_make(make_raw)
+                    model = _cell(row, columns.get("model"))
+                else:
+                    described = DESC.match(_cell(row, columns.get("description")))
+                    year = model_year(described.group(1), as_of) if described else None
+                    make = expand_make(described.group(2)) if described else ""
+                    model = re.sub(r"\s+", " ", described.group(3)).strip() if described else ""
+                if year is not None and make:
+                    keep(
+                        {
+                            "vin": vin,
+                            "year": year,
+                            "make": make,
+                            "model": model,
+                            "trim": _cell(row, columns.get("trim")),
+                            "color": _cell(row, columns.get("color")),
+                            "odometer": _miles(_cell(row, columns.get("miles"))),
+                            "lane": "",
+                            "lot": _cell(row, columns.get("stock")),
+                            "auction": "",
+                            "day_label": "In stock",
+                            "sort_key": "0000-00-01",
+                            "dead": False,
+                            "source": _cell(row, columns.get("source")),
+                        }
+                    )
+        for fields in (columns.get("trade_slots") or {}).values():
+            vin = re.sub(r"\s+", "", _cell(row, fields.get("vin"))).upper()
+            if not VIN_OK.match(vin):
                 continue
-            year = model_year(described.group(1), as_of)
-            make = expand_make(described.group(2))
-            model = re.sub(r"\s+", " ", described.group(3)).strip()
-        if year is None or not make:
-            continue
-        seen.add(vin)
-        cars.append(
-            {
-                "vin": vin,
-                "year": year,
-                "make": make,
-                "model": model,
-                "trim": _cell(row, columns.get("trim")),
-                "color": _cell(row, columns.get("color")),
-                "odometer": _miles(_cell(row, columns.get("miles"))),
-                "lane": "",
-                "lot": _cell(row, columns.get("stock")),
-                "auction": "",
-                "day_label": "In stock",
-                "sort_key": "0000-00-01",
-                "dead": False,
-                "source": _cell(row, columns.get("source")),
-            }
-        )
-    return cars
+            year = model_year(_cell(row, fields.get("year")), as_of)
+            make = expand_make(_cell(row, fields.get("make")))
+            if year is None or not make:
+                continue
+            keep(
+                {
+                    "vin": vin,
+                    "year": year,
+                    "make": make,
+                    "model": _cell(row, fields.get("model")),
+                    "trim": _cell(row, fields.get("trim")),
+                    "color": _cell(row, fields.get("color")),
+                    "odometer": _miles(_cell(row, fields.get("odometer"))),
+                    "lane": "",
+                    "lot": _cell(row, fields.get("stock")),
+                    "auction": "",
+                    "day_label": "Trade",
+                    "sort_key": "0000-00-01",
+                    "dead": False,
+                    "source": "Trade",
+                }
+            )
+    return list(by_vin.values())
 
 
 def _table_from_excel(data: bytes) -> list[list[str]]:
