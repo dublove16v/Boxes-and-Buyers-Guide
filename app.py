@@ -212,6 +212,20 @@ picked = st.selectbox(
 )
 st.session_state["week_id"] = picked
 
+export_cars = key_advantage_cars(db.week_vehicles(picked), dms_cars)
+export_body, export_count = key_advantage_txt(export_cars)
+purchase_count = sum(1 for car in export_cars if car.get("intake") == "Purchase" and key_advantage_txt([car])[1])
+trade_count = export_count - purchase_count
+export_name = re.sub(r"[^A-Za-z0-9._-]+", "_", labels[picked]).strip("_") or "boxes"
+st.sidebar.download_button(
+    f"Export Key Advantage ({export_count})",
+    data=export_body.encode("utf-8"),
+    file_name=f"{export_name}_KeyAdvantage.txt",
+    mime="text/plain",
+    disabled=export_count == 0,
+)
+st.sidebar.caption(f"{purchase_count} purchases · {trade_count} trades. Dead deals are left out.")
+
 search = st.text_input(
     "Search",
     placeholder="Year, make, model, VIN, or color",
@@ -270,25 +284,6 @@ st.caption(
     f"{sum(1 for car in live if flags.get(car['vin'], {}).get('here'))} here · "
     f"{sum(1 for car in live if flags.get(car['vin'], {}).get('chip'))} chip · "
     f"{sum(1 for car in live if flags.get(car['vin'], {}).get('bg'))} bg"
-)
-
-export_cars = key_advantage_cars(week_cars, dms_cars)
-export_body, export_count = key_advantage_txt(export_cars)
-purchase_count = sum(1 for car in export_cars if car.get("intake") == "Purchase" and key_advantage_txt([car])[1])
-trade_count = export_count - purchase_count
-export_name = re.sub(r"[^A-Za-z0-9._-]+", "_", labels[picked]).strip("_") or "boxes"
-st.download_button(
-    f"Download Key Advantage file ({export_count})",
-    data=export_body.encode("utf-8"),
-    file_name=f"{export_name}_KeyAdvantage.txt",
-    mime="text/plain",
-    disabled=export_count == 0,
-)
-st.caption(
-    f"Tab-delimited import for Supra Key Advantage. {purchase_count} purchases and {trade_count} trades. "
-    "Stock numbers ending in P or PL are purchases. T or TL are trades. "
-    "This week's boxes cars are included as purchases unless DealerTrack already assigned a stock ending. "
-    "Dead deals are left out. In Key Advantage use Vehicle Information, then Import Vehicle Information. Do not open the file in Excel first."
 )
 
 st.markdown(
