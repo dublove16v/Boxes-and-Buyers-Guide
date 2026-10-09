@@ -195,25 +195,24 @@ with st.sidebar:
         purchase_on_report = sum(1 for car in dms_cars if stock_kind(str(car.get("stock") or "")) == "Purchase")
         trade_on_report = sum(1 for car in dms_cars if stock_kind(str(car.get("stock") or "")) == "Trade")
         st.caption(f"{dms_name} · {purchase_on_report} purchases (P/PL) · {trade_on_report} trades (T/TL)")
-    export_cars = key_advantage_cars(dms_cars)
+    latest_boxes = db.week_vehicles(weeks[0]["id"]) if weeks else []
+    export_cars = key_advantage_cars(dms_cars, latest_boxes)
     export_body, export_count = key_advantage_txt(export_cars)
     purchase_count = sum(1 for car in export_cars if car.get("intake") == "Purchase" and key_advantage_txt([car])[1])
     trade_count = sum(1 for car in export_cars if car.get("intake") == "Trade" and key_advantage_txt([car])[1])
-    export_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(dms_name).stem).strip("_") if dms_name else "DealerTrack"
+    export_label = weeks[0]["name"] if weeks else (Path(dms_name).stem if dms_name else "KeyAdvantage")
+    export_name = re.sub(r"[^A-Za-z0-9._-]+", "_", export_label).strip("_") or "KeyAdvantage"
     st.download_button(
         f"Export Key Advantage ({export_count})",
         data=export_body.encode("utf-8"),
-        file_name=f"{export_name or 'DealerTrack'}_KeyAdvantage.txt",
+        file_name=f"{export_name}_KeyAdvantage.txt",
         mime="text/plain",
         disabled=export_count == 0,
     )
-    st.caption(
-        "Every car on the DealerTrack report."
-        if export_count
-        else "Upload a DealerTrack report to export."
-    )
     if export_count:
-        st.caption(f"{purchase_count} purchases · {trade_count} trades.")
+        st.caption(f"Newest boxes list and DealerTrack report. {purchase_count} purchases · {trade_count} trades.")
+    else:
+        st.caption("Upload a boxes sheet and a DealerTrack report to export.")
 
 if not weeks:
     st.info("Upload this week's boxes sheet to start the list. Cars crossed off on the sheet stay on the list as dead deals.")

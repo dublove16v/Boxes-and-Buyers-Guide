@@ -47,30 +47,55 @@ def _export_stock(car: dict, vin: str) -> str:
     return token
 
 
-def key_advantage_cars(dms_cars: list[dict]) -> list[dict]:
-    """Every vehicle on the DealerTrack report, once.
+def key_advantage_cars(dms_cars: list[dict], boxes_cars: list[dict] | None = None) -> list[dict]:
+    """Most recent DealerTrack report plus the most recent boxes list.
 
-    A stock number ending in P or PL is a purchase. T or TL is a trade.
-    Cars without that ending are still included.
+    The same VIN is written once. DealerTrack supplies the stock number.
+    P or PL is a purchase, T or TL is a trade. A boxes car with no stock
+    number is a purchase. Dead deals that are not on the DealerTrack report
+    are left out.
     """
-    chosen = []
-    seen = set()
-    for car in dms_cars:
+    by_vin: dict[str, dict] = {}
+    order: list[str] = []
+
+    def remember(car: dict, from_boxes: bool) -> None:
         vin = _clean(car.get("vin")).upper()
-        if not vin or vin in seen:
-            continue
-        seen.add(vin)
+        if not vin:
+            return
+        if from_boxes and car.get("dead") and vin not in by_vin:
+            return
+        if vin in by_vin:
+            row = by_vin[vin]
+            for field in ("year", "make", "model", "trim", "color", "odometer"):
+                if not row.get(field) and car.get(field):
+                    row[field] = car[field]
+            if from_boxes:
+                for field in ("lane", "lot", "auction"):
+                    if car.get(field):
+                        row[field] = car[field]
+            elif dealer_stock(car):
+                row["stock"] = dealer_stock(car)
+                row["intake"] = stock_kind(row["stock"]) or row.get("intake") or ""
+            return
         row = dict(car)
         row["vin"] = vin
         row["stock"] = dealer_stock(car)
         kind = stock_kind(row["stock"])
         if not kind and "trade" in _clean(car.get("source")).lower():
             kind = "Trade"
+        if not kind and from_boxes:
+            kind = "Purchase"
         row["intake"] = kind
         if not row.get("auction"):
-            row["auction"] = "DealerTrack"
-        chosen.append(row)
-    return chosen
+            row["auction"] = "" if from_boxes else "DealerTrack"
+        by_vin[vin] = row
+        order.append(vin)
+
+    for car in dms_cars:
+        remember(car, False)
+    for car in boxes_cars or []:
+        remember(car, True)
+    return [by_vin[vin] for vin in order]
 
 
 def key_advantage_txt(cars: list[dict]) -> tuple[str, int]:
