@@ -79,7 +79,7 @@ def _esc(value) -> str:
 
 
 def _page(car: dict, marks: dict, nudge_x: float, nudge_y: float, template: str) -> str:
-    model = " ".join(part for part in (car.get("model") or "", car.get("trim") or "") if part)
+    model = (car.get("model") or "").strip()
     year = "" if car.get("year") is None else str(car["year"])
     location = (car.get("auction") or "").strip()
     ink = []
