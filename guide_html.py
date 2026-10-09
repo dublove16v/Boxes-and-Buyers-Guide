@@ -10,14 +10,14 @@ SPOTS = [
     {"key": "asIs", "left": 10.385, "top": 20.490, "width": 4.078, "height": 3.091, "large": True},
     {"key": "dealerWarranty", "left": 10.463, "top": 26.762, "width": 4.000, "height": 3.091, "large": True},
     {"key": "fullWarranty", "left": 13.272, "top": 30.964, "width": 1.529, "height": 1.182, "large": False},
-    {"key": "limitedWarranty", "left": 12.353, "top": 33.447, "width": 1.529, "height": 1.182, "large": False},
+    {"key": "limitedWarranty", "left": 12.677, "top": 33.447, "width": 1.529, "height": 1.182, "large": False},
     {"key": "duration30", "left": 50.512, "top": 41.944, "width": 1.451, "height": 0.939, "large": False},
-    {"key": "duration60", "left": 50.790, "top": 44.278, "width": 1.451, "height": 0.939, "large": False},
+    {"key": "duration60", "left": 49.956, "top": 44.278, "width": 1.451, "height": 0.939, "large": False},
     {"key": "durationAsIs", "left": 50.767, "top": 46.426, "width": 1.412, "height": 0.970, "large": False},
     {"key": "mfrStill", "left": 8.980, "top": 64.242, "width": 1.569, "height": 1.212, "large": False},
     {"key": "mfrUsed", "left": 8.980, "top": 67.364, "width": 1.569, "height": 1.212, "large": False},
     {"key": "otherUsed", "left": 8.941, "top": 69.576, "width": 1.569, "height": 1.212, "large": False},
-    {"key": "serviceContract", "left": 10.403, "top": 75.689, "width": 1.569, "height": 1.182, "large": False},
+    {"key": "serviceContract", "left": 9.940, "top": 75.689, "width": 1.569, "height": 1.182, "large": False},
 ]
 
 
