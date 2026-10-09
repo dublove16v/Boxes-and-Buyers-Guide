@@ -9,47 +9,87 @@ def _clean(value) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def stock_kind(stock: str) -> str:
+    """DealerTrack stock numbers: T or TL is a trade, P or PL is a purchase."""
+    token = re.sub(r"[^A-Za-z0-9]", "", _clean(stock)).upper()
+    if token.endswith("TL") or token.endswith("T"):
+        return "Trade"
+    if token.endswith("PL") or token.endswith("P"):
+        return "Purchase"
+    return ""
+
+
+def dealer_stock(car: dict) -> str:
+    return _clean(car.get("stock") or "")
+
+
 def intake_label(car: dict) -> str:
-    source = _clean(car.get("source") or car.get("intake") or "")
+    kind = stock_kind(dealer_stock(car))
+    if kind:
+        return kind
+    marked = _clean(car.get("intake"))
+    if marked in ("Trade", "Purchase"):
+        return marked
+    source = _clean(car.get("source"))
     if re.search(r"trade", source, re.I):
         return "Trade"
     if re.search(r"purchas|auction|buy", source, re.I):
         return "Purchase"
-    if source:
-        return source
-    return "Purchase" if car.get("auction") else "Trade"
+    return "Purchase" if car.get("auction") else ""
+
+
+def _export_stock(car: dict, vin: str) -> str:
+    token = re.sub(r"[^A-Za-z0-9]", "", dealer_stock(car)).upper()
+    if not token:
+        token = vin[-6:]
+    if len(token) > 10:
+        token = token[-10:]
+    return token
 
 
 def key_advantage_cars(week_cars: list[dict], dms_cars: list[dict]) -> list[dict]:
-    """Auction purchases from the boxes week, plus trades from the DealerTrack report.
+    """Purchases and trades for the Key Advantage file.
 
-    When the report has trade-in columns or a trade source, only those trades are
-    added. Otherwise every DealerTrack car that is not already a purchase is added
-    as a trade. Dead deals are left out. The same VIN is written once.
+    A stock number ending in P or PL is a purchase. T or TL is a trade.
+    Boxes cars are purchases unless DealerTrack already gave that VIN a stock
+    suffix. Dead deals are left out. The same VIN is written once.
     """
+    dms_by_vin = {}
+    for car in dms_cars:
+        vin = _clean(car.get("vin")).upper()
+        if vin:
+            dms_by_vin[vin] = car
+    dead = {_clean(car.get("vin")).upper() for car in week_cars if car.get("dead")}
     chosen = []
-    seen = set()
+    seen = set(dead)
     for car in week_cars:
         if car.get("dead"):
             continue
-        vin = _clean(car.get("vin")).upper()
-        if vin in seen:
-            continue
-        seen.add(vin)
-        row = dict(car)
-        row["vin"] = vin
-        row["intake"] = "Purchase"
-        chosen.append(row)
-    explicit = [car for car in dms_cars if "trade" in _clean(car.get("source")).lower()]
-    extras = explicit if explicit else list(dms_cars)
-    for car in extras:
         vin = _clean(car.get("vin")).upper()
         if not vin or vin in seen:
             continue
         seen.add(vin)
         row = dict(car)
         row["vin"] = vin
-        row["intake"] = "Trade" if intake_label(car) != "Purchase" else "Purchase"
+        match = dms_by_vin.get(vin)
+        if match and dealer_stock(match):
+            row["stock"] = dealer_stock(match)
+        row["intake"] = stock_kind(dealer_stock(row)) or "Purchase"
+        chosen.append(row)
+    for car in dms_cars:
+        vin = _clean(car.get("vin")).upper()
+        if not vin or vin in seen:
+            continue
+        kind = stock_kind(dealer_stock(car))
+        if not kind and "trade" in _clean(car.get("source")).lower():
+            kind = "Trade"
+        if not kind:
+            continue
+        seen.add(vin)
+        row = dict(car)
+        row["vin"] = vin
+        row["stock"] = dealer_stock(car)
+        row["intake"] = kind
         if not row.get("auction"):
             row["auction"] = "DealerTrack"
         chosen.append(row)
@@ -66,7 +106,7 @@ def key_advantage_txt(cars: list[dict]) -> tuple[str, int]:
         vin = _clean(car.get("vin")).upper()
         if not VIN_OK.match(vin):
             continue
-        stock = vin[-6:]
+        stock = _export_stock(car, vin)
         miles = _clean(car.get("odometer"))
         note1 = " · ".join(
             part

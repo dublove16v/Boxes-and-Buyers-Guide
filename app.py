@@ -13,7 +13,7 @@ st.set_page_config(page_title="Boxes and Buyer's Guide Tool", layout="wide")
 try:
     import db
     from guide_html import guides_document, marks_for_year
-    from key_advantage import key_advantage_cars, key_advantage_txt
+    from key_advantage import key_advantage_cars, key_advantage_txt, stock_kind
     from parse_boxes import parse_boxes_file, week_date_from_name
     from parse_dms import parse_dms_file
 except Exception as boot_error:
@@ -181,7 +181,7 @@ with st.sidebar:
     dms_file = st.file_uploader(
         "DealerTrack report",
         type=["xlsx", "xls", "csv"],
-        help="Inventory or deal report. Trade-in columns are added to the Key Advantage file.",
+        help="Trades are stock numbers ending in T or TL. Purchases end in P or PL.",
     )
     if dms_file is not None and st.session_state.get("dms_token") != (getattr(dms_file, "file_id", None) or dms_file.name):
         stock = parse_dms_file(dms_file.getvalue(), dms_file.name, AS_OF)
@@ -192,9 +192,9 @@ with st.sidebar:
             st.session_state["dms_token"] = getattr(dms_file, "file_id", None) or dms_file.name
             st.rerun()
     if dms_name:
-        trade_on_report = sum(1 for car in dms_cars if "trade" in str(car.get("source") or "").lower())
-        detail = f"{trade_on_report} trades" if trade_on_report else f"{len(dms_cars)} vehicles"
-        st.caption(f"{dms_name} · {detail}")
+        purchase_on_report = sum(1 for car in dms_cars if stock_kind(str(car.get("stock") or "")) == "Purchase")
+        trade_on_report = sum(1 for car in dms_cars if stock_kind(str(car.get("stock") or "")) == "Trade")
+        st.caption(f"{dms_name} · {purchase_on_report} purchases (P/PL) · {trade_on_report} trades (T/TL)")
 
 if not weeks:
     st.info("Upload this week's boxes sheet to start the list. Cars crossed off on the sheet stay on the list as dead deals.")
@@ -285,9 +285,10 @@ st.download_button(
     disabled=export_count == 0,
 )
 st.caption(
-    f"Tab-delimited import for Supra Key Advantage. {purchase_count} purchases from this week's boxes"
-    + (f" and {trade_count} trades from the DealerTrack report." if dms_cars else ". Upload a DealerTrack report in the sidebar to include trades.")
-    + " Dead deals are left out. In Key Advantage use Vehicle Information, then Import Vehicle Information. Do not open the file in Excel first."
+    f"Tab-delimited import for Supra Key Advantage. {purchase_count} purchases and {trade_count} trades. "
+    "Stock numbers ending in P or PL are purchases. T or TL are trades. "
+    "This week's boxes cars are included as purchases unless DealerTrack already assigned a stock ending. "
+    "Dead deals are left out. In Key Advantage use Vehicle Information, then Import Vehicle Information. Do not open the file in Excel first."
 )
 
 st.markdown(
