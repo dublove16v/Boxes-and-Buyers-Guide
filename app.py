@@ -67,8 +67,22 @@ def _font_css() -> str:
       src: url(data:font/otf;base64,{bold}) format("opentype");
       font-weight: 700;
     }}
-    html, body, [class*="css"], .stApp, .stMarkdown, button, input, textarea, select {{
-      font-family: "Century Gothic Pro", "Century Gothic", sans-serif;
+    html, body, .stApp,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stSidebar"],
+    [data-testid="stMarkdown"],
+    [data-testid="stHeading"],
+    [data-testid="stWidgetLabel"],
+    [data-testid="stCaptionContainer"],
+    [data-testid="stDataFrame"],
+    [data-testid="stSelectbox"],
+    [data-testid="stRadio"],
+    [data-testid="stCheckbox"],
+    [data-testid="stTextInput"],
+    [data-testid="stFileUploader"],
+    [data-testid="stDownloadButton"],
+    label, p, button, input, textarea, select, .stMarkdown, .stCaption {{
+      font-family: "Century Gothic Pro", "Century Gothic", sans-serif !important;
     }}
     .app-title {{
       text-align: center;

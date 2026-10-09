@@ -6,6 +6,7 @@ showErrorDetails = "full"
 headless = true
 enableXsrfProtection = false
 enableCORS = false
+enableStaticServing = true
 
 [browser]
 gatherUsageStats = false
@@ -16,4 +17,17 @@ primaryColor = "#1f4d3a"
 backgroundColor = "#f4f1ea"
 secondaryBackgroundColor = "#ffffff"
 textColor = "#1c1915"
-font = "sans serif"
+font = "Century Gothic Pro, sans-serif"
+headingFont = "Century Gothic Pro, sans-serif"
+
+[[theme.fontFaces]]
+family = "Century Gothic Pro"
+url = "app/static/CenturyGothicPro.otf"
+weight = "400"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Century Gothic Pro"
+url = "app/static/CenturyGothicPro-Bold.otf"
+weight = "700"
+style = "normal"
