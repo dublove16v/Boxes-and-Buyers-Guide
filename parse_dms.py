@@ -105,8 +105,8 @@ def _columns(row: list[str]) -> dict | None:
             cols["miles"] = index
         elif "exterior" in key or key == "color":
             cols["color"] = index
-        elif key == "trim":
-            cols["trim"] = index
+        elif key in ("source", "acquisition") or key in ("deal type", "stock type", "inventory source"):
+            cols["source"] = index
     if "vin" not in cols:
         return None
     if "description" not in cols and "make" not in cols and "year" not in cols:
@@ -178,6 +178,7 @@ def vehicles_from_table(rows: list[list[str]], as_of: int) -> list[dict]:
                 "day_label": "In stock",
                 "sort_key": "0000-00-01",
                 "dead": False,
+                "source": _cell(row, columns.get("source")),
             }
         )
     return cars

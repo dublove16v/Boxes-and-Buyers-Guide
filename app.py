@@ -1,6 +1,7 @@
 import base64
 import html
 import json
+import re
 from datetime import date
 from pathlib import Path
 
@@ -12,6 +13,7 @@ st.set_page_config(page_title="Boxes and Buyer's Guide Tool", layout="wide")
 try:
     import db
     from guide_html import guides_document, marks_for_year
+    from key_advantage import key_advantage_cars, key_advantage_txt
     from parse_boxes import parse_boxes_file, week_date_from_name
     from parse_dms import parse_dms_file
 except Exception as boot_error:
@@ -262,6 +264,24 @@ st.caption(
     f"{sum(1 for car in live if flags.get(car['vin'], {}).get('here'))} here · "
     f"{sum(1 for car in live if flags.get(car['vin'], {}).get('chip'))} chip · "
     f"{sum(1 for car in live if flags.get(car['vin'], {}).get('bg'))} bg"
+)
+
+export_cars = key_advantage_cars(week_cars, dms_cars)
+export_body, export_count = key_advantage_txt(export_cars)
+purchase_count = sum(1 for car in export_cars if car.get("intake") == "Purchase" and key_advantage_txt([car])[1])
+trade_count = export_count - purchase_count
+export_name = re.sub(r"[^A-Za-z0-9._-]+", "_", labels[picked]).strip("_") or "boxes"
+st.download_button(
+    f"Download Key Advantage file ({export_count})",
+    data=export_body.encode("utf-8"),
+    file_name=f"{export_name}_KeyAdvantage.txt",
+    mime="text/plain",
+    disabled=export_count == 0,
+)
+st.caption(
+    f"Tab-delimited import for Supra Key Advantage. {purchase_count} purchases from this week's boxes"
+    + (f" and {trade_count} trades from the DealerTrack report." if dms_cars else ". Upload the DealerTrack report to include trades.")
+    + " Dead deals are left out. In Key Advantage use Vehicle Information, then Import Vehicle Information. Do not open the file in Excel first."
 )
 
 st.markdown(
