@@ -1,10 +1,29 @@
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-DB_PATH = ROOT / "data" / "desk.db"
+
+
+def _db_path() -> Path:
+    """Community Cloud can mount the repo read-only. Fall back to a writable dir."""
+    candidates = [ROOT / "data", Path("/tmp/boxes-desk")]
+    for folder in candidates:
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            probe = folder / ".write-test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+            return folder / "desk.db"
+        except OSError:
+            continue
+    fallback = Path(os.environ.get("TMPDIR", "/tmp")) / "boxes-desk.db"
+    return fallback
+
+
+DB_PATH = _db_path()
 
 
 def connect() -> sqlite3.Connection:
@@ -43,6 +62,7 @@ def connect() -> sqlite3.Connection:
           vin text not null,
           here integer not null default 0,
           chip integer not null default 0,
+          bg integer not null default 0,
           primary key (week_id, vin)
         );
         create table if not exists shop (
@@ -59,6 +79,10 @@ def connect() -> sqlite3.Connection:
         );
         """
     )
+    columns = {row[1] for row in conn.execute("pragma table_info(flags)")}
+    if "bg" not in columns:
+        conn.execute("alter table flags add column bg integer not null default 0")
+        conn.execute("update flags set bg = 1 where chip = 1")
     return conn
 
 
@@ -144,10 +168,13 @@ def week_vehicles(week_id: str) -> list[dict]:
 def flags_for(week_id: str) -> dict[str, dict]:
     conn = connect()
     rows = conn.execute(
-        "select vin, here, chip from flags where week_id = ?",
+        "select vin, here, chip, bg from flags where week_id = ?",
         (week_id,),
     ).fetchall()
-    return {row["vin"]: {"here": bool(row["here"]), "chip": bool(row["chip"])} for row in rows}
+    return {
+        row["vin"]: {"here": bool(row["here"]), "chip": bool(row["chip"]), "bg": bool(row["bg"])}
+        for row in rows
+    }
 
 
 def save_flags(week_id: str, rows: list[dict]) -> None:
@@ -157,18 +184,20 @@ def save_flags(week_id: str, rows: list[dict]) -> None:
             vin = str(row["vin"]).upper()
             here = 1 if row.get("here") else 0
             chip = 1 if row.get("chip") else 0
-            if not here and not chip:
+            bg = 1 if row.get("bg") else 0
+            if not here and not chip and not bg:
                 conn.execute("delete from flags where week_id = ? and vin = ?", (week_id, vin))
             else:
                 conn.execute(
                     """
-                    insert into flags (week_id, vin, here, chip)
-                    values (?, ?, ?, ?)
+                    insert into flags (week_id, vin, here, chip, bg)
+                    values (?, ?, ?, ?, ?)
                     on conflict(week_id, vin) do update set
                       here = excluded.here,
-                      chip = excluded.chip
+                      chip = excluded.chip,
+                      bg = excluded.bg
                     """,
-                    (week_id, vin, here, chip),
+                    (week_id, vin, here, chip, bg),
                 )
 
 

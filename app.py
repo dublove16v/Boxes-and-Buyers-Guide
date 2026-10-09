@@ -68,7 +68,8 @@ def sheet_frame(cars: list[dict], flags: dict[str, dict]) -> pd.DataFrame:
         rows.append(
             {
                 "HERE": bool(flag.get("here")),
-                "CHIP/BG": bool(flag.get("chip")),
+                "CHIP": bool(flag.get("chip")),
+                "BG": bool(flag.get("bg")),
                 "Print": False,
                 "Day": car["day_label"],
                 "Year": car["year"] or "",
@@ -164,12 +165,26 @@ st.session_state["week_id"] = picked
 week_cars = db.week_vehicles(picked)
 cars = merge_stock(week_cars, dms_cars)
 flags = db.flags_for(picked)
-frame = sheet_frame(cars, flags)
+show = st.radio(
+    "Show",
+    ["All", "Here, no chip", "Here, no BG"],
+    horizontal=True,
+)
+shown = []
+for car in cars:
+    flag = flags.get(car["vin"], {})
+    if show == "Here, no chip" and not (flag.get("here") and not flag.get("chip")):
+        continue
+    if show == "Here, no BG" and not (flag.get("here") and not flag.get("bg")):
+        continue
+    shown.append(car)
+frame = sheet_frame(shown, flags)
 live = [car for car in cars if not car["dead"]]
 st.caption(
     f"{len(live)} coming in · {sum(1 for car in cars if car['dead'])} dead · "
     f"{sum(1 for car in live if flags.get(car['vin'], {}).get('here'))} here · "
-    f"{sum(1 for car in live if flags.get(car['vin'], {}).get('chip'))} chip/bg"
+    f"{sum(1 for car in live if flags.get(car['vin'], {}).get('chip'))} chip · "
+    f"{sum(1 for car in live if flags.get(car['vin'], {}).get('bg'))} bg"
 )
 
 edited = st.data_editor(
@@ -178,7 +193,8 @@ edited = st.data_editor(
     width="stretch",
     column_config={
         "HERE": st.column_config.CheckboxColumn(required=True),
-        "CHIP/BG": st.column_config.CheckboxColumn(required=True),
+        "CHIP": st.column_config.CheckboxColumn(required=True),
+        "BG": st.column_config.CheckboxColumn(required=True),
         "Print": st.column_config.CheckboxColumn(required=True),
         "Day": st.column_config.TextColumn(disabled=True),
         "Year": st.column_config.TextColumn(disabled=True),
@@ -192,18 +208,25 @@ edited = st.data_editor(
         "Guide": st.column_config.TextColumn(disabled=True),
         "Status": st.column_config.TextColumn(disabled=True),
     },
-    key=f"grid-{picked}-{len(cars)}",
+    key=f"grid-{picked}-{show}-{len(shown)}",
 )
 
 flag_rows = [
-    {"vin": row["VIN"], "here": bool(row["HERE"]), "chip": bool(row["CHIP/BG"])}
+    {"vin": row["VIN"], "here": bool(row["HERE"]), "chip": bool(row["CHIP"]), "bg": bool(row["BG"])}
     for _, row in edited.iterrows()
 ]
-if flag_rows != [
-    {"vin": car["vin"], "here": bool(flags.get(car["vin"], {}).get("here")), "chip": bool(flags.get(car["vin"], {}).get("chip"))}
-    for car in cars
-]:
+expected = [
+    {
+        "vin": car["vin"],
+        "here": bool(flags.get(car["vin"], {}).get("here")),
+        "chip": bool(flags.get(car["vin"], {}).get("chip")),
+        "bg": bool(flags.get(car["vin"], {}).get("bg")),
+    }
+    for car in shown
+]
+if flag_rows != expected:
     db.save_flags(picked, flag_rows)
+    flags = db.flags_for(picked)
 
 chosen = edited[edited["Print"] == True]  # noqa: E712
 by_vin = {car["vin"]: car for car in cars}
@@ -212,12 +235,29 @@ if chosen.shape[0] and not to_print:
     st.warning("Dead deals stay on the list, but they are not printed.")
 elif to_print:
     html = guides_document(to_print, shop, AS_OF)
+
+    def mark_guides_printed() -> None:
+        rows = []
+        for vin in [car["vin"] for car in to_print]:
+            current = next((row for row in flag_rows if row["vin"] == vin), None)
+            flag = current or flags.get(vin, {})
+            rows.append(
+                {
+                    "vin": vin,
+                    "here": bool(flag.get("here")),
+                    "chip": bool(flag.get("chip")),
+                    "bg": True,
+                }
+            )
+        db.save_flags(picked, rows)
+
     st.download_button(
         f"Download {len(to_print)} buyers guide{'s' if len(to_print) != 1 else ''}",
         data=html.encode(),
         file_name="buyers-guides.html",
         mime="text/html",
+        on_click=mark_guides_printed,
     )
-    st.caption("Open the downloaded file. It sends itself to the printer. Use letter paper at 100% scale.")
+    st.caption("Open the downloaded file. It sends itself to the printer. BG is checked as soon as you download it.")
 else:
     st.caption("Check Print on the cars you want, then download the buyers guides.")
