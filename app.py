@@ -29,36 +29,22 @@ ROOT = Path(__file__).resolve().parent
 AS_OF = date.today().year
 
 
-def print_launcher(document: str, vins: str, week_id: str, label: str) -> str:
+def print_launcher(document: str) -> str:
     payload = json.dumps(document).replace("</", "<\\/")
-    safe_label = (
-        label.replace("&", "\u0026amp;")
-        .replace("<", "\u0026lt;")
-        .replace(">", "\u0026gt;")
-    )
     return f"""<!doctype html>
 <html>
 <body style="margin:0;background:transparent;font-family:sans-serif;">
-<button id="print-guides" type="button" style="height:2.4rem;padding:0 1rem;border:0;border-radius:0.5rem;background:#1f4d3a;color:#f4f1ea;font-weight:700;cursor:pointer;">{safe_label}</button>
 <script>
 const doc = {payload};
-document.getElementById("print-guides").onclick = function () {{
-  const w = window.open("", "_blank");
-  if (!w) {{
-    alert("Allow pop-ups for this site, then click Print again.");
-    return;
-  }}
+const w = window.open("", "_blank");
+if (!w) {{
+  document.body.textContent = "Allow pop-ups for this site, then click Print again.";
+}} else {{
   w.document.open();
   w.document.write(doc);
   w.document.close();
   setTimeout(function () {{ w.focus(); w.print(); }}, 400);
-  try {{
-    const url = new URL(window.parent.location.href);
-    url.searchParams.set("printed", {json.dumps(vins)});
-    url.searchParams.set("week", {json.dumps(week_id)});
-    setTimeout(function () {{ window.parent.location.href = url.toString(); }}, 900);
-  }} catch (err) {{}}
-}};
+}}
 </script>
 </body>
 </html>"""
@@ -292,7 +278,7 @@ edited = st.data_editor(
         "Guide": st.column_config.TextColumn(disabled=True),
         "Status": st.column_config.TextColumn(disabled=True),
     },
-    key=f"grid-{picked}-{show}-{len(shown)}",
+    key=f"grid-{picked}-{show}-{len(shown)}-{st.session_state.get('print_nonce', 0)}",
 )
 
 flag_rows = [
@@ -318,10 +304,29 @@ to_print = [by_vin[vin] for vin in chosen["VIN"].tolist() if vin in by_vin and n
 if chosen.shape[0] and not to_print:
     st.warning("Dead deals stay on the list, but they are not printed.")
 elif to_print:
-    html = guides_document(to_print, AS_OF)
     label = f"Print {len(to_print)} buyers guide{'s' if len(to_print) != 1 else ''}"
-    st.iframe(print_launcher(html, ",".join(car["vin"] for car in to_print), picked, label), height=48)
-    st.caption("Prints the make, model, year, VIN, purchase location, and X marks onto the blank form. Letter paper, 100% scale, no margins. Allow the pop-up. BG is checked when the print window opens.")
+    if st.button(label, type="primary"):
+        printed_vins = {car["vin"] for car in to_print}
+        db.save_flags(
+            picked,
+            [
+                {
+                    "vin": row["VIN"],
+                    "here": bool(row["HERE"]),
+                    "chip": bool(row["CHIP"]),
+                    "bg": True if row["VIN"] in printed_vins else bool(row["BG"]),
+                }
+                for _, row in edited.iterrows()
+            ],
+        )
+        st.session_state["print_job"] = guides_document(to_print, AS_OF)
+        st.session_state["print_nonce"] = st.session_state.get("print_nonce", 0) + 1
+        st.rerun()
+    st.caption("Prints the make, model, year, VIN, purchase location, and X marks onto the blank form. Letter paper, 100% scale, no margins. Allow the pop-up. BG is checked when you hit Print.")
 else:
     st.caption("Check Print on the cars you want, then print the buyers guides.")
+
+print_job = st.session_state.pop("print_job", "")
+if print_job:
+    st.iframe(print_launcher(print_job), height=36)
 
