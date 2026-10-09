@@ -7,17 +7,17 @@ ROOT = Path(__file__).resolve().parent
 
 # Checkbox boxes measured on the 8.5x11 scan of the shop form, as % of the page.
 SPOTS = [
-    {"key": "asIs", "left": 9.412, "top": 19.667, "width": 4.078, "height": 3.091, "large": True},
-    {"key": "dealerWarranty", "left": 9.490, "top": 25.939, "width": 4.000, "height": 3.091, "large": True},
-    {"key": "fullWarranty", "left": 11.882, "top": 30.212, "width": 1.529, "height": 1.182, "large": False},
-    {"key": "limitedWarranty", "left": 11.843, "top": 32.606, "width": 1.529, "height": 1.182, "large": False},
-    {"key": "duration30", "left": 50.118, "top": 41.121, "width": 1.451, "height": 0.939, "large": False},
-    {"key": "duration60", "left": 50.118, "top": 43.455, "width": 1.451, "height": 0.939, "large": False},
-    {"key": "durationAsIs", "left": 50.118, "top": 45.818, "width": 1.412, "height": 0.970, "large": False},
+    {"key": "asIs", "left": 10.385, "top": 20.490, "width": 4.078, "height": 3.091, "large": True},
+    {"key": "dealerWarranty", "left": 10.463, "top": 26.762, "width": 4.000, "height": 3.091, "large": True},
+    {"key": "fullWarranty", "left": 13.272, "top": 30.964, "width": 1.529, "height": 1.182, "large": False},
+    {"key": "limitedWarranty", "left": 13.233, "top": 33.358, "width": 1.529, "height": 1.182, "large": False},
+    {"key": "duration30", "left": 50.512, "top": 41.944, "width": 1.451, "height": 0.939, "large": False},
+    {"key": "duration60", "left": 50.512, "top": 44.278, "width": 1.451, "height": 0.939, "large": False},
+    {"key": "durationAsIs", "left": 50.489, "top": 46.426, "width": 1.412, "height": 0.970, "large": False},
     {"key": "mfrStill", "left": 8.980, "top": 64.242, "width": 1.569, "height": 1.212, "large": False},
     {"key": "mfrUsed", "left": 8.980, "top": 67.364, "width": 1.569, "height": 1.212, "large": False},
     {"key": "otherUsed", "left": 8.941, "top": 69.576, "width": 1.569, "height": 1.212, "large": False},
-    {"key": "serviceContract", "left": 9.176, "top": 75.152, "width": 1.569, "height": 1.182, "large": False},
+    {"key": "serviceContract", "left": 10.195, "top": 75.689, "width": 1.569, "height": 1.182, "large": False},
 ]
 
 
