@@ -362,42 +362,80 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+def _component_value(result):
+    if isinstance(result, dict) and "dataType" in result and "value" in result:
+        return result.get("value")
+    return result
+
+
+def _browser_snapshot(result):
+    """None until the browser answers. Then {'ok': 1, 'raw': str | None}."""
+    value = _component_value(result)
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+    if isinstance(value, dict) and value.get("ok"):
+        return value
+    return None
+
+
+def _snapshot_stamp(snap) -> int:
+    if not isinstance(snap, dict):
+        return 0
+    try:
+        return int(snap.get("stamp") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 imported = db.import_seed_csvs()
 db.apply_dead_catalog()
 db.apply_highlight_flags()
 if imported:
     st.toast(f"Loaded {imported} weeks from the boxes folder.")
 
-remembered = streamlit_js_eval(
-    js_expressions='localStorage.getItem("boxes-desk-v1")',
+browser_reply = streamlit_js_eval(
+    js_expressions='JSON.stringify({ok:1, raw: localStorage.getItem("boxes-desk-v1")})',
     key="boxes-desk-load",
 )
-if remembered and "desk_restored" not in st.session_state:
-    try:
-        remembered_state = json.loads(remembered)
-    except json.JSONDecodeError:
-        remembered_state = None
-    if isinstance(remembered_state, dict) and int(remembered_state.get("stamp") or 0) > db.state_stamp():
-        db.import_user_state(remembered_state)
-        st.session_state["desk_restored"] = True
-        st.rerun()
-    st.session_state["desk_restored"] = True
-desk_ready = remembered is not None or "desk_restored" in st.session_state
+browser_info = _browser_snapshot(browser_reply)
+browser_ready = browser_info is not None
+stored_state = None
+stored_stamp = int(st.session_state.get("browser_stamp") or 0)
+if browser_ready:
+    raw = browser_info.get("raw")
+    if isinstance(raw, str) and raw:
+        try:
+            stored_state = json.loads(raw)
+        except json.JSONDecodeError:
+            stored_state = None
+        stored_stamp = max(stored_stamp, _snapshot_stamp(stored_state))
+    elif raw in (None, ""):
+        stored_stamp = max(stored_stamp, 0)
+if browser_ready and stored_stamp > db.state_stamp() and isinstance(stored_state, dict):
+    db.import_user_state(stored_state)
+    st.session_state["browser_stamp"] = stored_stamp
+    st.rerun()
 
 
 def persist_browser() -> None:
-    if not desk_ready:
+    if not browser_ready:
         return
     snap = db.export_user_state()
-    signature = int(snap.get("stamp") or 0)
-    if signature == st.session_state.get("desk_pushed_stamp"):
+    signature = _snapshot_stamp(snap)
+    if signature <= int(st.session_state.get("browser_stamp") or 0):
         return
     payload = json.dumps(snap, separators=(",", ":"), default=str)
-    streamlit_js_eval(
+    wrote = streamlit_js_eval(
         js_expressions="localStorage.setItem('boxes-desk-v1'," + json.dumps(payload) + "); 'saved'",
         key=f"boxes-desk-save-{signature}",
     )
-    st.session_state["desk_pushed_stamp"] = signature
+    if _component_value(wrote) == "saved":
+        st.session_state["browser_stamp"] = signature
 
 weeks = db.list_weeks()
 dms_name, dms_cars = db.load_dms()
@@ -474,8 +512,11 @@ with st.sidebar:
         st.caption(f"Newest boxes list and DealerTrack report. {purchase_count} purchases · {trade_count} trades.")
     else:
         st.caption("Upload a boxes sheet and a DealerTrack report to export.")
-    if db.state_stamp():
+    saved_stamp = int(st.session_state.get("browser_stamp") or 0)
+    if saved_stamp and saved_stamp >= db.state_stamp():
         st.caption("Saved in this browser.")
+    elif db.state_stamp():
+        st.caption("Saving a copy in this browser.")
     else:
         st.caption("Not saved in this browser yet.")
 
