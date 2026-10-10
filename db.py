@@ -212,6 +212,7 @@ def save_flags(week_id: str, rows: list[dict]) -> None:
                     """,
                     (week_id, vin, here, chip, bg),
                 )
+        _touch_state(conn)
 
 
 def load_shop() -> dict:
@@ -249,6 +250,7 @@ def save_dms(name: str, vehicles: list[dict]) -> None:
             """,
             (name, json.dumps(vehicles)),
         )
+        _touch_state(conn)
 
 
 def load_dms() -> tuple[str, list[dict]]:
@@ -287,6 +289,7 @@ def save_boxes_link(url: str, name: str = "", digest: str = "", error: str = "")
             """,
             (url, name, digest, _now(), error),
         )
+        _touch_state(conn)
 
 
 INTAKE_ID = "intake:trades-purchases"
@@ -351,7 +354,125 @@ def sync_intake(dms_cars: list[dict]) -> int:
         if vin not in seen:
             ordered.append(by_vin[vin])
     save_week(INTAKE_NAME, "9999-12-31", ordered, week_id=INTAKE_ID)
+    _touch_state(connect())
     return added
+
+
+def _ensure_meta(conn: sqlite3.Connection) -> None:
+    conn.execute("create table if not exists meta (key text primary key, value text)")
+
+
+def _touch_state(conn: sqlite3.Connection) -> None:
+    _ensure_meta(conn)
+    stamp = str(int(datetime.now(timezone.utc).timestamp() * 1000))
+    conn.execute(
+        """
+        insert into meta (key, value) values ('user-stamp', ?)
+        on conflict(key) do update set value = excluded.value
+        """,
+        (stamp,),
+    )
+
+
+def touch_state() -> None:
+    conn = connect()
+    with conn:
+        _touch_state(conn)
+
+
+def state_stamp() -> int:
+    conn = connect()
+    _ensure_meta(conn)
+    row = conn.execute("select value from meta where key = 'user-stamp'").fetchone()
+    try:
+        return int(row["value"]) if row else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _set_stamp(stamp: int) -> None:
+    conn = connect()
+    with conn:
+        _ensure_meta(conn)
+        conn.execute(
+            """
+            insert into meta (key, value) values ('user-stamp', ?)
+            on conflict(key) do update set value = excluded.value
+            """,
+            (str(int(stamp)),),
+        )
+
+
+def export_user_state() -> dict:
+    """Checks, uploads, trades, and the boxes link. Seed weeks stay in the repo."""
+    conn = connect()
+    seed_names = {path.stem for path in (ROOT / "seed" / "csv").glob("*.csv")}
+    flags = [
+        {
+            "week_id": row["week_id"],
+            "vin": row["vin"],
+            "here": bool(row["here"]),
+            "chip": bool(row["chip"]),
+            "bg": bool(row["bg"]),
+        }
+        for row in conn.execute("select week_id, vin, here, chip, bg from flags")
+    ]
+    weeks = []
+    for week in conn.execute("select id, name, week_date from weeks"):
+        if week["name"] in seed_names:
+            continue
+        weeks.append(
+            {
+                "id": week["id"],
+                "name": week["name"],
+                "week_date": week["week_date"],
+                "vehicles": week_vehicles(week["id"]),
+            }
+        )
+    dms_name, dms_cars = load_dms()
+    return {
+        "stamp": state_stamp(),
+        "flags": flags,
+        "weeks": weeks,
+        "dms": {"name": dms_name, "cars": dms_cars},
+        "link": load_boxes_link(),
+    }
+
+
+def import_user_state(state: dict) -> None:
+    stamp = int(state.get("stamp") or 0)
+    if stamp <= state_stamp():
+        return
+    for week in state.get("weeks") or []:
+        vehicles = week.get("vehicles") or []
+        if not week.get("id") or not vehicles:
+            continue
+        save_week(
+            str(week.get("name") or "Boxes"),
+            str(week.get("week_date") or ""),
+            vehicles,
+            week_id=str(week["id"]),
+        )
+    by_week: dict[str, list[dict]] = {}
+    for row in state.get("flags") or []:
+        week_id = str(row.get("week_id") or "")
+        if week_id:
+            by_week.setdefault(week_id, []).append(row)
+    for week_id, rows in by_week.items():
+        save_flags(week_id, rows)
+    dms = state.get("dms") or {}
+    cars = dms.get("cars") or []
+    if cars:
+        save_dms(str(dms.get("name") or "DealerTrack"), cars)
+    link = state.get("link") or {}
+    if link.get("url"):
+        save_boxes_link(
+            str(link.get("url") or ""),
+            str(link.get("name") or ""),
+            str(link.get("digest") or ""),
+            str(link.get("error") or ""),
+        )
+    _set_stamp(stamp)
 
 
 def apply_dead_catalog() -> int:

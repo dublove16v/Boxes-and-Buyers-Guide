@@ -19,6 +19,7 @@ try:
     from key_advantage import key_advantage_cars, key_advantage_txt, stock_kind
     from parse_boxes import parse_boxes_file, week_date_from_name
     from parse_dms import parse_dms_file
+    from streamlit_js_eval import streamlit_js_eval
 except Exception as boot_error:
     import traceback
 
@@ -138,6 +139,7 @@ def pull_boxes_link() -> str:
     name = Path(filename).stem
     week_id = db.save_week(name, week_date_from_name(name), cars)
     db.save_boxes_link(url, name, digest, "")
+    db.touch_state()
     st.session_state["week_id"] = week_id
     return "updated"
 
@@ -290,6 +292,37 @@ db.apply_highlight_flags()
 if imported:
     st.toast(f"Loaded {imported} weeks from the boxes folder.")
 
+remembered = streamlit_js_eval(
+    js_expressions='localStorage.getItem("boxes-desk-v1")',
+    key="boxes-desk-load",
+)
+if remembered and "desk_restored" not in st.session_state:
+    try:
+        remembered_state = json.loads(remembered)
+    except json.JSONDecodeError:
+        remembered_state = None
+    if isinstance(remembered_state, dict) and int(remembered_state.get("stamp") or 0) > db.state_stamp():
+        db.import_user_state(remembered_state)
+        st.session_state["desk_restored"] = True
+        st.rerun()
+    st.session_state["desk_restored"] = True
+desk_ready = remembered is not None or "desk_restored" in st.session_state
+
+
+def persist_browser() -> None:
+    if not desk_ready:
+        return
+    snap = db.export_user_state()
+    signature = int(snap.get("stamp") or 0)
+    if signature == st.session_state.get("desk_pushed_stamp"):
+        return
+    payload = json.dumps(snap, separators=(",", ":"), default=str)
+    streamlit_js_eval(
+        js_expressions="localStorage.setItem('boxes-desk-v1'," + json.dumps(payload) + "); 'saved'",
+        key=f"boxes-desk-save-{signature}",
+    )
+    st.session_state["desk_pushed_stamp"] = signature
+
 weeks = db.list_weeks()
 dms_name, dms_cars = db.load_dms()
 added_intake = db.sync_intake(dms_cars)
@@ -333,6 +366,7 @@ with st.sidebar:
         else:
             name = Path(boxes_file.name).stem
             week_id = db.save_week(name, week_date_from_name(name), cars)
+            db.touch_state()
             st.session_state["boxes_token"] = getattr(boxes_file, "file_id", None) or boxes_file.name
             st.session_state["week_id"] = week_id
             st.rerun()
@@ -373,6 +407,7 @@ with st.sidebar:
         st.caption("Upload a boxes sheet and a DealerTrack report to export.")
 
 if not weeks:
+    persist_browser()
     st.info("Upload this week's boxes sheet to start the list. Cars crossed off on the sheet stay on the list as dead deals.")
     st.stop()
 
@@ -623,4 +658,5 @@ else:
 print_job = st.session_state.pop("print_job", "")
 if print_job:
     st.iframe(print_launcher(print_job), height=36)
+persist_browser()
 
