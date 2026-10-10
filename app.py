@@ -215,10 +215,13 @@ def _font_css() -> str:
       text-align: center;
     }}
     [data-testid="stSidebar"] [data-testid="stWidgetLabel"] {{
-      display: flex;
-      justify-content: center;
+      display: flex !important;
+      justify-content: center !important;
       text-align: center;
       width: 100%;
+    }}
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"] > div {{
+      flex: 0 0 auto !important;
     }}
     [data-testid="stSidebar"] [data-testid="stTextInput"] input {{
       text-align: center;
@@ -238,8 +241,12 @@ def _font_css() -> str:
       white-space: normal !important;
     }}
     [data-testid="stSidebar"] [data-testid="stDownloadButton"] {{
-      display: flex;
-      justify-content: center;
+      display: flex !important;
+      justify-content: center !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stDownloadButton"] button {{
+      width: fit-content !important;
+      margin-inline: auto !important;
     }}
     </style>
     """
