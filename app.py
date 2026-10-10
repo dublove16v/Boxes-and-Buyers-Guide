@@ -474,6 +474,10 @@ with st.sidebar:
         st.caption(f"Newest boxes list and DealerTrack report. {purchase_count} purchases · {trade_count} trades.")
     else:
         st.caption("Upload a boxes sheet and a DealerTrack report to export.")
+    if db.state_stamp():
+        st.caption("Saved in this browser.")
+    else:
+        st.caption("Not saved in this browser yet.")
 
 if not weeks:
     persist_browser()
