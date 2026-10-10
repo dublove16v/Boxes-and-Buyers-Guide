@@ -316,15 +316,21 @@ def sync_intake(dms_cars: list[dict]) -> int:
     existing = week_vehicles(INTAKE_ID)
     by_vin = {str(car["vin"]).upper(): dict(car) for car in existing}
     added = 0
+    changed = False
     for car, stock, kind in incoming:
         vin = str(car["vin"]).upper()
         if vin in by_vin:
             row = by_vin[vin]
-            row["stock"] = stock
-            row["day_label"] = f"{kind} · {stock}"
+            updates = {
+                "stock": stock,
+                "day_label": f"{kind} · {stock}",
+            }
             for field in ("year", "make", "model", "trim", "color", "odometer"):
                 if car.get(field):
-                    row[field] = car[field]
+                    updates[field] = car.get(field)
+            if any(str(row.get(field) or "") != str(value or "") for field, value in updates.items()):
+                row.update(updates)
+                changed = True
             continue
         by_vin[vin] = {
             "vin": vin,
@@ -353,6 +359,8 @@ def sync_intake(dms_cars: list[dict]) -> int:
         vin = str(car["vin"]).upper()
         if vin not in seen:
             ordered.append(by_vin[vin])
+    if not added and not changed:
+        return 0
     save_week(INTAKE_NAME, "9999-12-31", ordered, week_id=INTAKE_ID)
     _touch_state(connect())
     return added

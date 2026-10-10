@@ -373,16 +373,9 @@ if added_intake:
     st.toast(f"Added {added_intake} to Trades & Purchases.")
     weeks = db.list_weeks()
 boxes_weeks = [week for week in weeks if week["id"] != db.INTAKE_ID]
-
-
-@st.fragment(run_every="30s")
-def watch_boxes_link() -> None:
-    if pull_boxes_link() == "updated":
-        st.toast("Updated the boxes list.")
-        st.rerun(scope="app")
-
-
-watch_boxes_link()
+if pull_boxes_link() == "updated":
+    st.toast("Updated the boxes list.")
+    st.rerun()
 
 with st.sidebar:
     st.header("This week")
@@ -461,13 +454,14 @@ labels = {week["id"]: week["name"] for week in ordered_weeks}
 default_id = st.session_state.get("week_id") or (boxes_weeks[0]["id"] if boxes_weeks else ordered_weeks[0]["id"])
 if default_id not in labels:
     default_id = boxes_weeks[0]["id"] if boxes_weeks else ordered_weeks[0]["id"]
+if "week_id" not in st.session_state or st.session_state["week_id"] not in labels:
+    st.session_state["week_id"] = default_id
 picked = st.selectbox(
     "Buying week",
     options=list(labels),
-    index=list(labels).index(default_id),
     format_func=lambda week_id: labels[week_id],
+    key="week_id",
 )
-st.session_state["week_id"] = picked
 if picked == db.INTAKE_ID:
     st.caption("Running list of trades (T/TL) and purchased cars (P/PL). Uploading a DealerTrack report adds new ones. They stay off the boxes weeks.")
 
