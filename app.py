@@ -3,6 +3,7 @@ import hashlib
 import html
 import json
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timezone
@@ -74,12 +75,16 @@ def auction_html(name: str) -> str:
     return f'<span style="color:{auction_color(text)};font-weight:700">{html.escape(text)}</span>'
 
 
-def boxes_download_url(url: str) -> str:
+def boxes_download_urls(url: str) -> list[str]:
     parsed = urllib.parse.urlparse(url.strip())
     host = parsed.netloc.lower()
     if "docs.google.com" in host and "/spreadsheets/" in parsed.path and "/d/" in parsed.path:
         file_id = parsed.path.split("/d/", 1)[1].split("/", 1)[0]
-        return f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
+        return [
+            f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx",
+            f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=csv",
+            f"https://docs.google.com/spreadsheets/d/{file_id}/gviz/tq?tqx=out:csv",
+        ]
     if "drive.google.com" in host or "drive.usercontent.google.com" in host:
         file_id = ""
         if "/d/" in parsed.path:
@@ -87,25 +92,46 @@ def boxes_download_url(url: str) -> str:
         else:
             file_id = urllib.parse.parse_qs(parsed.query).get("id", [""])[0]
         if file_id:
-            return f"https://drive.google.com/uc?export=download&id={file_id}"
-    return url.strip()
+            return [f"https://drive.google.com/uc?export=download&id={file_id}"]
+    return [url.strip()]
 
 
 def fetch_boxes(url: str) -> tuple[bytes, str]:
-    request = urllib.request.Request(boxes_download_url(url), headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        data = response.read()
-        disposition = response.headers.get("Content-Disposition", "")
-    sniff = data[:40].lstrip().lower()
-    if sniff.startswith(b"<!doctype") or sniff.startswith(b"<html"):
-        raise RuntimeError("Share that file as anyone with the link, then paste the link again.")
-    name = "boxes.xlsx"
-    match = re.search(r"filename\*?=(?:UTF-8''|\"?)([^\";]+)", disposition, re.I)
-    if match:
-        name = urllib.parse.unquote(match.group(1)).strip().strip('"')
-    if Path(name).suffix.lower() not in {".xlsx", ".xls", ".csv"}:
-        name = f"{Path(name).stem or 'boxes'}.xlsx"
-    return data, name
+    headers = {"User-Agent": "Mozilla/5.0"}
+    last_error = "Could not open that boxes link."
+    for target in boxes_download_urls(url):
+        request = urllib.request.Request(target, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                data = response.read()
+                disposition = response.headers.get("Content-Disposition", "")
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 403):
+                last_error = (
+                    "Google blocked that sheet. Click Share, set General access to "
+                    "Anyone with the link, then paste the link again."
+                )
+                continue
+            last_error = "Could not open that boxes link."
+            continue
+        except Exception:
+            last_error = "Could not open that boxes link."
+            continue
+        sniff = data[:40].lstrip().lower()
+        if sniff.startswith(b"<!doctype") or sniff.startswith(b"<html"):
+            last_error = (
+                "Google blocked that sheet. Click Share, set General access to "
+                "Anyone with the link, then paste the link again."
+            )
+            continue
+        name = "boxes.csv" if target.endswith("csv") or b"," in data[:80] and not data.startswith(b"PK") else "boxes.xlsx"
+        match = re.search(r"filename\*?=(?:UTF-8''|\"?)([^\";]+)", disposition, re.I)
+        if match:
+            name = urllib.parse.unquote(match.group(1)).strip().strip('"')
+        if Path(name).suffix.lower() not in {".xlsx", ".xls", ".csv"}:
+            name = f"{Path(name).stem or 'boxes'}.xlsx"
+        return data, name
+    raise RuntimeError(last_error)
 
 
 def pull_boxes_link() -> str:
