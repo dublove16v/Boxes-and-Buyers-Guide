@@ -179,13 +179,52 @@ def week_vehicles(week_id: str) -> list[dict]:
 
 
 def flags_for(week_id: str) -> dict[str, dict]:
+    return {
+        vin: flag
+        for (_week_id, vin), flag in flags_for_weeks([week_id]).items()
+    }
+
+
+def vehicles_for(week_ids: list[str]) -> list[dict]:
+    if not week_ids:
+        return []
     conn = connect()
+    marks = ",".join("?" for _ in week_ids)
     rows = conn.execute(
-        "select vin, here, chip, bg from flags where week_id = ?",
-        (week_id,),
+        f"""
+        select v.week_id, w.name as week_name, v.vin, v.year, v.make, v.model, v.trim,
+               v.color, v.odometer, v.lane, v.lot, v.auction, v.day_label, v.sort_key,
+               v.dead, v.stock
+        from vehicles v
+        join weeks w on w.id = v.week_id
+        where v.week_id in ({marks})
+        order by w.week_date desc, v.sort_key, v.position
+        """,
+        week_ids,
+    ).fetchall()
+    cars = []
+    for row in rows:
+        car = dict(row)
+        car["dead"] = bool(car["dead"])
+        cars.append(car)
+    return cars
+
+
+def flags_for_weeks(week_ids: list[str]) -> dict[tuple[str, str], dict]:
+    if not week_ids:
+        return {}
+    conn = connect()
+    marks = ",".join("?" for _ in week_ids)
+    rows = conn.execute(
+        f"select week_id, vin, here, chip, bg from flags where week_id in ({marks})",
+        week_ids,
     ).fetchall()
     return {
-        row["vin"]: {"here": bool(row["here"]), "chip": bool(row["chip"]), "bg": bool(row["bg"])}
+        (row["week_id"], row["vin"]): {
+            "here": bool(row["here"]),
+            "chip": bool(row["chip"]),
+            "bg": bool(row["bg"]),
+        }
         for row in rows
     }
 

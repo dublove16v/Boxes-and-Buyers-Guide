@@ -306,9 +306,17 @@ def matches_search(car: dict, query: str) -> bool:
         return True
     blob = " ".join(
         str(car.get(key) or "")
-        for key in ("year", "make", "model", "vin", "color", "day_label", "auction", "stock")
+        for key in ("year", "make", "model", "vin", "color", "day_label", "auction", "stock", "week_name")
     ).lower()
     return query.strip().lower() in blob
+
+
+def save_mixed_flags(rows: list[dict]) -> None:
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["week_id"]), []).append(row)
+    for week_id, group in grouped.items():
+        db.save_flags(week_id, group)
 
 
 def flag_box(label: str, key: str, default: bool) -> bool:
@@ -317,26 +325,27 @@ def flag_box(label: str, key: str, default: bool) -> bool:
     return st.checkbox(label, key=key)
 
 
-def sheet_frame(cars: list[dict], flags: dict[str, dict]) -> pd.DataFrame:
+def sheet_frame(cars: list[dict], flags: dict[tuple[str, str], dict], cross: bool) -> pd.DataFrame:
     rows = []
     for car in cars:
-        flag = flags.get(car["vin"], {})
-        rows.append(
-            {
-                "HERE": bool(flag.get("here")),
-                "CHIP": bool(flag.get("chip")),
-                "BG": bool(flag.get("bg")),
-                "Print": False,
-                "Year": car["year"] or "",
-                "Vehicle": f"{car['make']} {car['model']}".strip(),
-                "VIN": car["vin"],
-                "Day": car["day_label"],
-                "Color": car["color"],
-                "Miles": car["odometer"],
-                "Auction": car["auction"],
-                "Guide": warranty_label(car["year"]),
-            }
-        )
+        flag = flags.get((car.get("week_id") or "", car["vin"]), {})
+        row = {
+            "HERE": bool(flag.get("here")),
+            "CHIP": bool(flag.get("chip")),
+            "BG": bool(flag.get("bg")),
+            "Print": False,
+            "Year": car["year"] or "",
+            "Vehicle": f"{car['make']} {car['model']}".strip(),
+            "VIN": car["vin"],
+            "Day": car["day_label"],
+            "Color": car["color"],
+            "Miles": car["odometer"],
+            "Auction": car["auction"],
+            "Guide": warranty_label(car["year"]),
+        }
+        if cross:
+            row["Week"] = car.get("week_name") or ""
+        rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -519,20 +528,27 @@ if printed and printed_week == picked:
         st.query_params["layout"] = layout
     st.rerun()
 
-week_cars = db.week_vehicles(picked)
-cars = week_cars
-flags = db.flags_for(picked)
 show = st.radio(
     "Show",
-    ["All", "Here, no chip", "Here, no BG"],
+    ["All", "Here", "Here, no chip", "Here, no BG"],
     horizontal=True,
+    key="list-filter",
 )
+searching = bool(search.strip())
+cross = searching or show != "All"
+week_ids = [week["id"] for week in ordered_weeks] if cross else [picked]
+cars = db.vehicles_for(week_ids)
+for car in cars:
+    car["week_name"] = labels.get(car.get("week_id"), "")
+flags = db.flags_for_weeks(week_ids)
 shown = []
 dead = [car for car in cars if car["dead"]]
 for car in cars:
     if car["dead"]:
         continue
-    flag = flags.get(car["vin"], {})
+    flag = flags.get((car.get("week_id"), car["vin"]), {})
+    if show == "Here" and not flag.get("here"):
+        continue
     if show == "Here, no chip" and not (flag.get("here") and not flag.get("chip")):
         continue
     if show == "Here, no BG" and not (flag.get("here") and not flag.get("bg")):
@@ -542,11 +558,12 @@ for car in cars:
     shown.append(car)
 dead_shown = [car for car in dead if matches_search(car, search)] if show == "All" else []
 live = [car for car in cars if not car["dead"]]
+scope = " across every list" if cross else ""
 st.caption(
     f"{len(live)} coming in · {len(dead)} dead · "
-    f"{sum(1 for car in live if flags.get(car['vin'], {}).get('here'))} here · "
-    f"{sum(1 for car in live if flags.get(car['vin'], {}).get('chip'))} chip · "
-    f"{sum(1 for car in live if flags.get(car['vin'], {}).get('bg'))} bg"
+    f"{sum(1 for car in live if flags.get((car.get('week_id'), car['vin']), {}).get('here'))} here · "
+    f"{sum(1 for car in live if flags.get((car.get('week_id'), car['vin']), {}).get('chip'))} chip · "
+    f"{sum(1 for car in live if flags.get((car.get('week_id'), car['vin']), {}).get('bg'))} bg{scope}"
 )
 
 st.markdown(
@@ -578,35 +595,42 @@ st.html(
 mobile = st.query_params.get("layout") == "mobile"
 
 nonce = st.session_state.get("print_nonce", 0)
-for vin in st.session_state.pop("clear_print", []):
-    st.session_state.pop(f"print-{picked}-{vin}", None)
+for token in st.session_state.pop("clear_print", []):
+    st.session_state.pop(f"print-{token}", None)
 flag_rows = []
 to_print = []
+
+def flag_record(car: dict, here: bool, chip: bool, bg: bool) -> dict:
+    return {"week_id": car.get("week_id") or picked, "vin": car["vin"], "here": here, "chip": chip, "bg": bg}
 
 if mobile:
     def car_card(car: dict, dead_deal: bool) -> None:
         line = car_line(car)
+        week_bit = f'<p style="margin:0;line-height:1.2;">{html.escape(car.get("week_name") or "")}</p>' if cross and car.get("week_name") else ""
         with st.container(border=True):
             if dead_deal:
                 st.markdown(
                     f'<p style="margin:0;color:#8c3a32;font-weight:700;text-decoration:line-through;">{html.escape(line)}</p>'
+                    + week_bit
                     + (f'<p style="margin:0;line-height:1.2;">{auction_html(car.get("auction") or "")}</p>' if car.get("auction") else "")
                     + '<p style="margin:0.1rem 0 0;color:#8c3a32;font-size:0.8rem;">Dead deal</p>',
                     unsafe_allow_html=True,
                 )
                 return
-            flag = flags.get(car["vin"], {})
+            flag = flags.get((car.get("week_id"), car["vin"]), {})
+            token = f"{car.get('week_id')}|{car['vin']}"
             with st.container(horizontal=True, gap="xsmall", wrap=False, horizontal_alignment="left"):
-                here = flag_box("Here", f"here-{picked}-{car['vin']}-{nonce}", bool(flag.get("here")))
-                chip = flag_box("Chip", f"chip-{picked}-{car['vin']}-{nonce}", bool(flag.get("chip")))
-                bg = flag_box("BG", f"bg-{picked}-{car['vin']}-{nonce}", bool(flag.get("bg")))
-                selected = flag_box("Print", f"print-{picked}-{car['vin']}", False)
+                here = flag_box("Here", f"here-{token}-{nonce}", bool(flag.get("here")))
+                chip = flag_box("Chip", f"chip-{token}-{nonce}", bool(flag.get("chip")))
+                bg = flag_box("BG", f"bg-{token}-{nonce}", bool(flag.get("bg")))
+                selected = flag_box("Print", f"print-{token}", False)
             st.markdown(
                 f'<p style="margin:0.05rem 0 0;font-weight:700;line-height:1.2;">{html.escape(line)}</p>'
+                + week_bit
                 + (f'<p style="margin:0;line-height:1.2;">{auction_html(car.get("auction") or "")}</p>' if car.get("auction") else ""),
                 unsafe_allow_html=True,
             )
-            flag_rows.append({"vin": car["vin"], "here": here, "chip": chip, "bg": bg})
+            flag_rows.append(flag_record(car, here, chip, bg))
             if selected:
                 to_print.append(car)
 
@@ -617,26 +641,29 @@ if mobile:
     for car in dead_shown:
         car_card(car, True)
 else:
+    columns = [
+        "HERE",
+        "CHIP",
+        "BG",
+        "Print",
+        "Year",
+        "Vehicle",
+        "VIN",
+        "Auction",
+        "Day",
+        "Color",
+        "Miles",
+        "Guide",
+    ]
+    if cross:
+        columns.insert(7, "Week")
     if shown:
-        frame = sheet_frame(shown, flags)
+        frame = sheet_frame(shown, flags, cross)
         edited = st.data_editor(
             frame.style.map(lambda value: f"color: {auction_color(value)}; font-weight: 700", subset=["Auction"]),
             hide_index=True,
             width="stretch",
-            column_order=[
-                "HERE",
-                "CHIP",
-                "BG",
-                "Print",
-                "Year",
-                "Vehicle",
-                "VIN",
-                "Auction",
-                "Day",
-                "Color",
-                "Miles",
-                "Guide",
-            ],
+            column_order=columns,
             column_config={
                 "HERE": st.column_config.CheckboxColumn(required=True),
                 "CHIP": st.column_config.CheckboxColumn(required=True),
@@ -645,66 +672,54 @@ else:
                 "Year": st.column_config.TextColumn(disabled=True, width="small"),
                 "Vehicle": st.column_config.TextColumn(disabled=True),
                 "VIN": st.column_config.TextColumn(disabled=True),
+                "Week": st.column_config.TextColumn(disabled=True),
                 "Day": st.column_config.TextColumn(disabled=True),
                 "Color": st.column_config.TextColumn(disabled=True, width="small"),
                 "Miles": st.column_config.TextColumn(disabled=True, width="small"),
                 "Auction": st.column_config.TextColumn(disabled=True),
                 "Guide": st.column_config.TextColumn(disabled=True, width="small"),
             },
-            key=f"grid-{picked}-{show}-{len(shown)}-{nonce}",
+            key=f"grid-{'all' if cross else picked}-{show}-{search}-{len(shown)}-{nonce}",
         )
-        by_vin = {car["vin"]: car for car in shown}
+        by_key = {(car["vin"], car.get("week_name") or ""): car for car in shown}
         for _, row in edited.iterrows():
-            flag_rows.append(
-                {
-                    "vin": row["VIN"],
-                    "here": bool(row["HERE"]),
-                    "chip": bool(row["CHIP"]),
-                    "bg": bool(row["BG"]),
-                }
-            )
-            if bool(row["Print"]) and row["VIN"] in by_vin:
-                to_print.append(by_vin[row["VIN"]])
-    elif search.strip():
-        st.caption("Nothing matches that search.")
+            car = by_key.get((row["VIN"], row["Week"] if cross else ""))
+            if not car:
+                continue
+            flag_rows.append(flag_record(car, bool(row["HERE"]), bool(row["CHIP"]), bool(row["BG"])))
+            if bool(row["Print"]):
+                to_print.append(car)
+    elif search.strip() or show != "All":
+        st.caption("Nothing matches.")
     if dead_shown:
         st.caption("Dead deals")
         for car in dead_shown:
+            label = car_line(car)
+            if cross and car.get("week_name"):
+                label = f"{car['week_name']} · {label}"
             st.markdown(
-                f'<p style="margin:0;color:#8c3a32;text-decoration:line-through;">{html.escape(car_line(car))}</p>',
+                f'<p style="margin:0;color:#8c3a32;text-decoration:line-through;">{html.escape(label)}</p>',
                 unsafe_allow_html=True,
             )
 
-expected = [
-    {
-        "vin": car["vin"],
-        "here": bool(flags.get(car["vin"], {}).get("here")),
-        "chip": bool(flags.get(car["vin"], {}).get("chip")),
-        "bg": bool(flags.get(car["vin"], {}).get("bg")),
-    }
-    for car in shown
-]
+expected = [flag_record(car, bool(flags.get((car.get("week_id"), car["vin"]), {}).get("here")), bool(flags.get((car.get("week_id"), car["vin"]), {}).get("chip")), bool(flags.get((car.get("week_id"), car["vin"]), {}).get("bg"))) for car in shown]
 if flag_rows != expected:
-    db.save_flags(picked, flag_rows)
-    flags = db.flags_for(picked)
+    save_mixed_flags(flag_rows)
 
 if to_print:
     label = f"Print {len(to_print)} buyers guide{'s' if len(to_print) != 1 else ''}"
     if st.button(label, type="primary"):
-        printed_vins = {car["vin"] for car in to_print}
-        db.save_flags(
-            picked,
+        printed = {(car.get("week_id"), car["vin"]) for car in to_print}
+        save_mixed_flags(
             [
                 {
-                    "vin": row["vin"],
-                    "here": row["here"],
-                    "chip": row["chip"],
-                    "bg": True if row["vin"] in printed_vins else row["bg"],
+                    **row,
+                    "bg": True if (row["week_id"], row["vin"]) in printed else row["bg"],
                 }
                 for row in flag_rows
-            ],
+            ]
         )
-        st.session_state["clear_print"] = list(printed_vins)
+        st.session_state["clear_print"] = [f"{car.get('week_id')}|{car['vin']}" for car in to_print]
         st.session_state["print_job"] = guides_document(to_print, AS_OF)
         st.session_state["print_nonce"] = st.session_state.get("print_nonce", 0) + 1
         st.rerun()
