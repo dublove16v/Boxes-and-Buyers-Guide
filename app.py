@@ -1,8 +1,11 @@
 import base64
+import hashlib
 import html
 import json
 import re
-from datetime import date
+import urllib.parse
+import urllib.request
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -68,6 +71,75 @@ def auction_html(name: str) -> str:
     if not text:
         return ""
     return f'<span style="color:{auction_color(text)};font-weight:700">{html.escape(text)}</span>'
+
+
+def boxes_download_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url.strip())
+    host = parsed.netloc.lower()
+    if "docs.google.com" in host and "/spreadsheets/" in parsed.path and "/d/" in parsed.path:
+        file_id = parsed.path.split("/d/", 1)[1].split("/", 1)[0]
+        return f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
+    if "drive.google.com" in host or "drive.usercontent.google.com" in host:
+        file_id = ""
+        if "/d/" in parsed.path:
+            file_id = parsed.path.split("/d/", 1)[1].split("/", 1)[0]
+        else:
+            file_id = urllib.parse.parse_qs(parsed.query).get("id", [""])[0]
+        if file_id:
+            return f"https://drive.google.com/uc?export=download&id={file_id}"
+    return url.strip()
+
+
+def fetch_boxes(url: str) -> tuple[bytes, str]:
+    request = urllib.request.Request(boxes_download_url(url), headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        data = response.read()
+        disposition = response.headers.get("Content-Disposition", "")
+    sniff = data[:40].lstrip().lower()
+    if sniff.startswith(b"<!doctype") or sniff.startswith(b"<html"):
+        raise RuntimeError("Share that file as anyone with the link, then paste the link again.")
+    name = "boxes.xlsx"
+    match = re.search(r"filename\*?=(?:UTF-8''|\"?)([^\";]+)", disposition, re.I)
+    if match:
+        name = urllib.parse.unquote(match.group(1)).strip().strip('"')
+    if Path(name).suffix.lower() not in {".xlsx", ".xls", ".csv"}:
+        name = f"{Path(name).stem or 'boxes'}.xlsx"
+    return data, name
+
+
+def pull_boxes_link() -> str:
+    saved = db.load_boxes_link()
+    url = str(saved.get("url") or "").strip()
+    if not url:
+        return "empty"
+    pulled_at = str(saved.get("pulled_at") or "")
+    if saved.get("digest") and pulled_at:
+        try:
+            age = datetime.now(timezone.utc) - datetime.fromisoformat(pulled_at)
+        except ValueError:
+            age = None
+        if age is not None and age.total_seconds() < 25:
+            return "same"
+    try:
+        data, filename = fetch_boxes(url)
+    except Exception as exc:
+        message = str(exc).strip() or "Could not open that boxes link."
+        db.save_boxes_link(url, str(saved.get("name") or ""), str(saved.get("digest") or ""), message[:240])
+        return "error"
+    digest = hashlib.sha256(data).hexdigest()
+    if digest == saved.get("digest"):
+        if saved.get("error"):
+            db.save_boxes_link(url, str(saved.get("name") or ""), digest, "")
+        return "same"
+    cars = parse_boxes_file(data, filename)
+    if not cars:
+        db.save_boxes_link(url, Path(filename).stem, str(saved.get("digest") or ""), "That link did not have any cars.")
+        return "error"
+    name = Path(filename).stem
+    week_id = db.save_week(name, week_date_from_name(name), cars)
+    db.save_boxes_link(url, name, digest, "")
+    st.session_state["week_id"] = week_id
+    return "updated"
 
 
 def print_launcher(document: str) -> str:
@@ -226,8 +298,33 @@ if added_intake:
     weeks = db.list_weeks()
 boxes_weeks = [week for week in weeks if week["id"] != db.INTAKE_ID]
 
+
+@st.fragment(run_every="30s")
+def watch_boxes_link() -> None:
+    if pull_boxes_link() == "updated":
+        st.toast("Updated the boxes list.")
+        st.rerun(scope="app")
+
+
+watch_boxes_link()
+
 with st.sidebar:
     st.header("This week")
+    saved_link = db.load_boxes_link()
+    if "boxes-link-input" not in st.session_state:
+        st.session_state["boxes-link-input"] = saved_link["url"]
+    link = st.text_input(
+        "Boxes link",
+        key="boxes-link-input",
+        help="Google Sheet or Drive file, shared as anyone with the link. Changes load on their own.",
+    )
+    if link.strip() != saved_link["url"]:
+        db.save_boxes_link(link.strip())
+        st.rerun()
+    if saved_link["error"]:
+        st.caption(saved_link["error"])
+    elif saved_link["url"]:
+        st.caption(f"Watching {saved_link['name'] or 'the boxes list'}.")
     boxes_file = st.file_uploader("Boxes sheet", type=["xlsx", "xls", "csv"])
     if boxes_file is not None and st.session_state.get("boxes_token") != (getattr(boxes_file, "file_id", None) or boxes_file.name):
         cars = parse_boxes_file(boxes_file.getvalue(), boxes_file.name)

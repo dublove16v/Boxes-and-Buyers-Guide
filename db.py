@@ -78,6 +78,14 @@ def connect() -> sqlite3.Connection:
           name text not null default '',
           payload text not null default '[]'
         );
+        create table if not exists boxes_link (
+          id integer primary key check (id = 1),
+          url text not null default '',
+          name text not null default '',
+          digest text not null default '',
+          pulled_at text not null default '',
+          error text not null default ''
+        );
         """
     )
     columns = {row[1] for row in conn.execute("pragma table_info(flags)")}
@@ -253,6 +261,32 @@ def load_dms() -> tuple[str, list[dict]]:
     except json.JSONDecodeError:
         cars = []
     return row["name"] or "", cars if isinstance(cars, list) else []
+
+
+def load_boxes_link() -> dict:
+    conn = connect()
+    row = conn.execute("select url, name, digest, pulled_at, error from boxes_link where id = 1").fetchone()
+    if not row:
+        return {"url": "", "name": "", "digest": "", "pulled_at": "", "error": ""}
+    return dict(row)
+
+
+def save_boxes_link(url: str, name: str = "", digest: str = "", error: str = "") -> None:
+    conn = connect()
+    with conn:
+        conn.execute(
+            """
+            insert into boxes_link (id, url, name, digest, pulled_at, error)
+            values (1, ?, ?, ?, ?, ?)
+            on conflict(id) do update set
+              url = excluded.url,
+              name = excluded.name,
+              digest = excluded.digest,
+              pulled_at = excluded.pulled_at,
+              error = excluded.error
+            """,
+            (url, name, digest, _now(), error),
+        )
 
 
 INTAKE_ID = "intake:trades-purchases"
