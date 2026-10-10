@@ -39,18 +39,15 @@ def intake_label(car: dict) -> str:
 
 
 def _export_stock(car: dict, vin: str) -> str:
-    token = re.sub(r"[^A-Za-z0-9]", "", dealer_stock(car)).upper()
-    if not token:
-        token = vin[-6:]
-    if len(token) > 10:
-        token = token[-10:]
-    return token
+    # Key Advantage stock is the last 6 of the VIN, not the DealerTrack stock number.
+    return vin[-6:]
 
 
 def key_advantage_cars(dms_cars: list[dict], boxes_cars: list[dict] | None = None) -> list[dict]:
     """Most recent DealerTrack report plus the most recent boxes list.
 
-    The same VIN is written once. DealerTrack supplies the stock number.
+    The same VIN is written once. DealerTrack stock numbers still decide
+    trade versus purchase. The export stock field is the last 6 of the VIN.
     P or PL is a purchase, T or TL is a trade. A boxes car with no stock
     number is a purchase. Dead deals that are not on the DealerTrack report
     are left out.
