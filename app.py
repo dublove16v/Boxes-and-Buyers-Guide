@@ -205,6 +205,42 @@ def _font_css() -> str:
       margin: 0;
     }}
     .app-sub {{ text-align: center; color: #5c564c; margin: 0.2rem 0 0.8rem; }}
+    [data-testid="stSidebar"] [data-testid="stHeading"],
+    [data-testid="stSidebar"] [data-testid="stHeading"] h1,
+    [data-testid="stSidebar"] [data-testid="stHeading"] h2,
+    [data-testid="stSidebar"] [data-testid="stHeading"] h3,
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p,
+    [data-testid="stSidebar"] [data-testid="stAlert"] {{
+      text-align: center;
+    }}
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"] {{
+      display: flex;
+      justify-content: center;
+      text-align: center;
+      width: 100%;
+    }}
+    [data-testid="stSidebar"] [data-testid="stTextInput"] input {{
+      text-align: center;
+    }}
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {{
+      align-items: center !important;
+      justify-content: center;
+      text-align: center;
+    }}
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"] {{
+      justify-content: center !important;
+      text-align: center !important;
+      align-self: center !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"] span {{
+      text-align: center !important;
+      white-space: normal !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stDownloadButton"] {{
+      display: flex;
+      justify-content: center;
+    }}
     </style>
     """
 
