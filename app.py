@@ -30,6 +30,45 @@ except Exception as boot_error:
 ROOT = Path(__file__).resolve().parent
 AS_OF = date.today().year
 
+AUCTION_COLORS = {
+    "manheim new jersey": "#1d4e89",
+    "manheim pennsylvania": "#1f7a4d",
+    "bel air auto auction": "#b45309",
+    "manheim albany": "#6d28d9",
+    "manheim new york": "#0f766e",
+    "waverly": "#9a3412",
+    "manheim new england": "#1e3a8a",
+    "manheim maryland": "#9f1239",
+    "manheim ny metro skyline": "#0369a1",
+    "manheim rochester": "#7c3aed",
+    "harrisburg": "#a16207",
+    "manheim palm beach": "#c2410c",
+    "manheim orlando": "#0e7490",
+    "manheim baltimore-washington": "#7f1d1d",
+    "manheim dallas": "#3f6212",
+    "manheim tampa": "#be123c",
+    "manheim chicago": "#312e81",
+    "mycentral auction": "#365314",
+    "trade": "#44403c",
+}
+AUCTION_FALLBACK = ("#1d4e89", "#1f7a4d", "#b45309", "#6d28d9", "#0f766e", "#9a3412", "#9f1239", "#0369a1")
+
+
+def auction_color(name: str) -> str:
+    key = re.sub(r"\s+", " ", str(name or "")).strip().lower().replace("wavlery", "waverly")
+    if not key:
+        return "#1c1915"
+    if key in AUCTION_COLORS:
+        return AUCTION_COLORS[key]
+    return AUCTION_FALLBACK[sum(ord(char) for char in key) % len(AUCTION_FALLBACK)]
+
+
+def auction_html(name: str) -> str:
+    text = str(name or "").strip()
+    if not text:
+        return ""
+    return f'<span style="color:{auction_color(text)};font-weight:700">{html.escape(text)}</span>'
+
 
 def print_launcher(document: str) -> str:
     payload = json.dumps(document).replace("</", "<\\/")
@@ -358,7 +397,8 @@ if mobile:
             if dead_deal:
                 st.markdown(
                     f'<p style="margin:0;color:#8c3a32;font-weight:700;text-decoration:line-through;">{html.escape(line)}</p>'
-                    '<p style="margin:0.1rem 0 0;color:#8c3a32;font-size:0.8rem;">Dead deal</p>',
+                    + (f'<p style="margin:0;line-height:1.2;">{auction_html(car.get("auction") or "")}</p>' if car.get("auction") else "")
+                    + '<p style="margin:0.1rem 0 0;color:#8c3a32;font-size:0.8rem;">Dead deal</p>',
                     unsafe_allow_html=True,
                 )
                 return
@@ -369,7 +409,8 @@ if mobile:
                 bg = flag_box("BG", f"bg-{picked}-{car['vin']}-{nonce}", bool(flag.get("bg")))
                 selected = flag_box("Print", f"print-{picked}-{car['vin']}", False)
             st.markdown(
-                f'<p style="margin:0.05rem 0 0.15rem;font-weight:700;line-height:1.2;">{html.escape(line)}</p>',
+                f'<p style="margin:0.05rem 0 0;font-weight:700;line-height:1.2;">{html.escape(line)}</p>'
+                + (f'<p style="margin:0;line-height:1.2;">{auction_html(car.get("auction") or "")}</p>' if car.get("auction") else ""),
                 unsafe_allow_html=True,
             )
             flag_rows.append({"vin": car["vin"], "here": here, "chip": chip, "bg": bg})
@@ -384,8 +425,9 @@ if mobile:
         car_card(car, True)
 else:
     if shown:
+        frame = sheet_frame(shown, flags)
         edited = st.data_editor(
-            sheet_frame(shown, flags),
+            frame.style.map(lambda value: f"color: {auction_color(value)}; font-weight: 700", subset=["Auction"]),
             hide_index=True,
             width="stretch",
             column_order=[
