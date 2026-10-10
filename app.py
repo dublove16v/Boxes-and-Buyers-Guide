@@ -333,8 +333,6 @@ def sheet_frame(cars: list[dict], flags: dict[str, dict]) -> pd.DataFrame:
                 "Day": car["day_label"],
                 "Color": car["color"],
                 "Miles": car["odometer"],
-                "Lane": car["lane"],
-                "Lot": car["lot"],
                 "Auction": car["auction"],
                 "Guide": warranty_label(car["year"]),
             }
@@ -637,8 +635,6 @@ else:
                 "Day",
                 "Color",
                 "Miles",
-                "Lane",
-                "Lot",
                 "Guide",
             ],
             column_config={
@@ -652,8 +648,6 @@ else:
                 "Day": st.column_config.TextColumn(disabled=True),
                 "Color": st.column_config.TextColumn(disabled=True, width="small"),
                 "Miles": st.column_config.TextColumn(disabled=True, width="small"),
-                "Lane": st.column_config.TextColumn(disabled=True, width="small"),
-                "Lot": st.column_config.TextColumn(disabled=True, width="small"),
                 "Auction": st.column_config.TextColumn(disabled=True),
                 "Guide": st.column_config.TextColumn(disabled=True, width="small"),
             },
