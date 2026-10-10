@@ -535,12 +535,12 @@ else:
                 "Year",
                 "Vehicle",
                 "VIN",
+                "Auction",
                 "Day",
                 "Color",
                 "Miles",
                 "Lane",
                 "Lot",
-                "Auction",
                 "Guide",
             ],
             column_config={
