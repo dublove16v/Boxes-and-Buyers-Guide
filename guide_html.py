@@ -1,6 +1,7 @@
 import base64
 import html
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -74,6 +75,43 @@ def marks_for_year(year: int | None, as_of: int) -> dict:
     return blank
 
 
+AUCTION_INITIALS = {
+    "manheim new jersey": "MNJ",
+    "manheim pennsylvania": "MPA",
+    "bel air auto auction": "BAA",
+    "manheim albany": "MAL",
+    "manheim new york": "MNY",
+    "waverly": "WAV",
+    "wavlery": "WAV",
+    "manheim new england": "MNE",
+    "manheim maryland": "MMD",
+    "manheim ny metro skyline": "SKY",
+    "manheim rochester": "MRO",
+    "harrisburg": "HBG",
+    "manheim palm beach": "MPB",
+    "manheim orlando": "MOR",
+    "manheim baltimore-washington": "MBW",
+    "manheim dallas": "MDA",
+    "manheim tampa": "MTA",
+    "manheim chicago": "MCH",
+    "mycentral auction": "MCA",
+    "trade": "TRD",
+}
+
+
+def auction_initials(name: str) -> str:
+    text = " ".join(str(name or "").split())
+    key = text.lower()
+    if key in AUCTION_INITIALS:
+        return AUCTION_INITIALS[key]
+    words = [word for word in re.split(r"[^A-Za-z0-9]+", text) if word and word.lower() not in {"auto", "auction"}]
+    if not words:
+        return ""
+    if len(words) == 1:
+        return words[0][:3].upper()
+    return "".join(word[0] for word in words).upper()[:4]
+
+
 def _esc(value) -> str:
     return html.escape("" if value is None else str(value))
 
@@ -81,7 +119,7 @@ def _esc(value) -> str:
 def _page(car: dict, marks: dict, nudge_x: float, nudge_y: float, template: str) -> str:
     model = (car.get("model") or "").strip()
     year = "" if car.get("year") is None else str(car["year"])
-    location = (car.get("auction") or "").strip()
+    location = auction_initials(car.get("auction") or "")
     ink = []
     if location:
         ink.append(f'<p class="guide-location">{_esc(location)}</p>')

@@ -537,10 +537,16 @@ show = st.radio(
 searching = bool(search.strip())
 cross = searching or show != "All"
 week_ids = [week["id"] for week in ordered_weeks] if cross else [picked]
-cars = db.vehicles_for(week_ids)
-for car in cars:
-    car["week_name"] = labels.get(car.get("week_id"), "")
-flags = db.flags_for_weeks(week_ids)
+cars = []
+for week_id in week_ids:
+    for car in db.week_vehicles(week_id):
+        car["week_id"] = week_id
+        car["week_name"] = labels.get(week_id, "")
+        cars.append(car)
+flags = {}
+for week_id in week_ids:
+    for vin, flag in db.flags_for(week_id).items():
+        flags[(week_id, vin)] = flag
 shown = []
 dead = [car for car in cars if car["dead"]]
 for car in cars:

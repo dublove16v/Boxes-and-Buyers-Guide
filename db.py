@@ -179,9 +179,14 @@ def week_vehicles(week_id: str) -> list[dict]:
 
 
 def flags_for(week_id: str) -> dict[str, dict]:
+    conn = connect()
+    rows = conn.execute(
+        "select vin, here, chip, bg from flags where week_id = ?",
+        (week_id,),
+    ).fetchall()
     return {
-        vin: flag
-        for (_week_id, vin), flag in flags_for_weeks([week_id]).items()
+        row["vin"]: {"here": bool(row["here"]), "chip": bool(row["chip"]), "bg": bool(row["bg"])}
+        for row in rows
     }
 
 
