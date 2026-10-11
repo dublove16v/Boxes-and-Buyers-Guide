@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="Boxes and Buyer's Guide Tool", page_icon="static/logo.png", layout="wide")
+st.set_page_config(page_title="BBG", page_icon="static/logo.png", layout="wide")
 
 try:
     import db
@@ -231,6 +231,44 @@ def _font_css() -> str:
       margin: 0;
     }}
     .app-sub {{ text-align: center; color: #5c564c; margin: 0.2rem 0 0.8rem; }}
+    header[data-testid="stHeader"], footer, [data-testid="stToolbar"] {{ display: none; }}
+    .stApp {{ background: #f3efe6; }}
+    [data-testid="stSidebar"] {{ background: #fbf9f4; border-right: 1px solid #e3dacd; }}
+    [data-testid="stBaseButton-primary"] {{
+      background: #2c2824;
+      color: #fbf9f4;
+      border: 0;
+      border-radius: 8px;
+    }}
+    [data-testid="stBaseButton-secondary"] {{
+      border-radius: 8px;
+      border-color: #e3dacd;
+      background: #fbf9f4;
+    }}
+    .bbg-nav {{
+      background: #2c2824;
+      color: #fbf9f4;
+      border-radius: 12px;
+      text-align: center;
+      padding: 22px 16px 16px;
+      margin: 0 0 16px;
+    }}
+    .bbg-lockup {{
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+    }}
+    .bbg-word {{
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      line-height: 1;
+    }}
+    .bbg-nav p {{
+      margin: 8px 0 0;
+      font-size: 14px;
+      opacity: .8;
+    }}
     [data-testid="stSidebar"] [data-testid="stHeading"],
     [data-testid="stSidebar"] [data-testid="stHeading"] h1,
     [data-testid="stSidebar"] [data-testid="stHeading"] h2,
@@ -356,9 +394,21 @@ def merge_stock(week_cars: list[dict], stock: list[dict]) -> list[dict]:
 
 
 st.markdown(_font_css(), unsafe_allow_html=True)
-st.markdown('<h1 class="app-title">Boxes and Buyer\'s Guide Tool</h1>', unsafe_allow_html=True)
 st.markdown(
-    f'<p class="app-sub">{AS_OF - 9} and newer prints a limited dealer warranty. {AS_OF - 10} and older prints As-Is and a service contract.</p>',
+    f"""
+    <header class="bbg-nav">
+      <div class="bbg-lockup">
+        <svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true">
+          <rect width="42" height="42" rx="10" fill="#d4b36a"/>
+          <path fill="#2c2824" d="M7 24h3.2l2.4-5.2h12.2L27.4 24H35v5.2h-2.2a3.3 3.3 0 0 1-6.4 0h-7.6a3.3 3.3 0 0 1-6.4 0H7V24z"/>
+          <circle cx="15.2" cy="29.2" r="1.7" fill="#d4b36a"/>
+          <circle cx="29.6" cy="29.2" r="1.7" fill="#d4b36a"/>
+        </svg>
+        <span class="bbg-word">BBG</span>
+      </div>
+      <p>{AS_OF - 9} and newer prints a limited dealer warranty. {AS_OF - 10} and older prints As-Is and a service contract.</p>
+    </header>
+    """,
     unsafe_allow_html=True,
 )
 
